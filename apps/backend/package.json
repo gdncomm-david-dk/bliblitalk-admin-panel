@@ -1,0 +1,60 @@
+{
+  "name": "@repo/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "generate": "prisma generate --schema=src/db/prisma/schema.prisma",
+    "migrate": "prisma migrate dev --schema=src/db/prisma/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema=src/db/prisma/schema.prisma",
+    "seed": "prisma db seed --schema=src/db/prisma/schema.prisma",
+    "studio": "prisma studio --schema=src/db/prisma/schema.prisma"
+  },
+  "prisma": {
+    "seed": "tsx src/db/prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "@repo/auth": "workspace:*",
+    "@repo/shared-types": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
+    "pdfkit": "^0.19.1",
+    "pino": "^9.3.0",
+    "pino-http": "^10.2.0",
+    "svg-to-pdfkit": "^0.1.8",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/tsconfig": "workspace:*",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pdfkit": "^0.17.6",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^8.57.0",
+    "prisma": "^6.1.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "bliblitalk-admin",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "packageManager": "pnpm@9.7.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:up": "docker-compose up -d db",
+    "db:generate": "pnpm --filter @repo/backend generate",
+    "db:migrate": "pnpm --filter @repo/backend migrate",
+    "db:seed": "pnpm --filter @repo/backend seed"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0",
+    "turbo": "^2.1.0",
+    "typescript": "^5.5.0"
+  }
+}

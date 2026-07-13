@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  EVENT_ADMIN
+  HR_TA
+  VIEWER
+  PARTICIPANT
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  WAITING
+  REJECTED
+  SHORTLISTED
+  CANCELLED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  REGISTRATION_CLOSED
+  COMPLETED
+  CANCELLED
+}
+
+enum Attendance {
+  PRESENT
+  ABSENT
+  PENDING
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String
+  role              Role           @default(PARTICIPANT)
+  department        String?
+  position          String?
+  phone             String?
+  avatarUrl         String?
+  // Self-registration profile fields (Talent Engagement participants).
+  institution       String?
+  yearsOfExperience String?
+  passwordHash      String
+  registrations Registration[]
+  certificates  Certificate[]
+  feedbacks     Feedback[]
+  // Events this user administers (EVENT_ADMIN scope). Empty for other roles.
+  adminEvents   Event[]        @relation("EventAdmins")
+  // Events this user owns (created / is accountable for).
+  ownedEvents   Event[]        @relation("EventOwner")
+  createdAt     DateTime       @default(now())
+}
+
+model Speaker {
+  id          String   @id @default(cuid())
+  name        String
+  title       String?
+  company     String?
+  bioShort    String?
+  bioLong     String?
+  credentials String[] @default([])
+  avatarUrl   String?
+  featured    Boolean  @default(false)
+  events      Event[]  @relation("EventSpeakers")
+}
+
+model Event {
+  id                   String         @id @default(cuid())
+  slug                 String         @unique
+  eventCode            String?
+  title                String
+  subtitle             String?
+  bannerUrl            String?
+  // Small poster/card image for list views; falls back to bannerUrl when unset.
+  thumbnailUrl         String?
+  description          String
+  category             String
+  tags                 String[]       @default([])
+  location             String
+  startsAt             DateTime
+  endsAt               DateTime
+  capacity             Int            @default(0)
+  status               EventStatus    @default(DRAFT)
+  hasSpeedDating       Boolean        @default(false)
+  featured             Boolean        @default(false)
+  recommended          Boolean        @default(false)
+  // ---- Lifecycle / organizer controls ----
+  ownerId              String?
+  owner                User?          @relation("EventOwner", fields: [ownerId], references: [id])
+  showRemainingSeats   Boolean        @default(true)
+  enableCertificate    Boolean        @default(true)
+  enableFeedback       Boolean        @default(false)
+  waitingListEnabled   Boolean        @default(true)
+  registrationOpensAt  DateTime?
+  publishedAt          DateTime?
+  venue                String?
+  mapsUrl              String?
+  // ---- CMS-editable detail-page content ----
+  registrationDeadline DateTime?
+  eventType            String?
+  dressCode            String?
+  language             String?
+  organizedBy          String?
+  importantNotes       String?
+  learningPoints       Json           @default("[]")
+  discussionPoints     Json           @default("[]")
+  agenda               Json           @default("[]")
+  faqs                 Json           @default("[]")
+  galleryImages        String[]       @default([])
+  recordingUrl         String?
+  presentationUrl      String?
+  // Which sections render on the portal's Past Event page for this event.
+  // Shape: { pastEvent, speaker, gallery, keyTakeaways, recording, certificate } — all booleans.
+  displayConfig        Json           @default("{\"pastEvent\":true,\"speaker\":true,\"gallery\":true,\"keyTakeaways\":true,\"recording\":true,\"certificate\":true}")
+  speakers             Speaker[]      @relation("EventSpeakers")
+  registrations        Registration[]
+  certificates         Certificate[]
+  feedbacks            Feedback[]
+  // Users who administer this event (EVENT_ADMIN scope).
+  admins               User[]         @relation("EventAdmins")
+  reminders            EventReminder[]
+}
+
+model Registration {
+  id          String                   @id @default(cuid())
+  userId      String
+  eventId     String
+  status      RegistrationStatus       @default(REGISTERED)
+  attendance  Attendance               @default(PENDING)
+  user          User                     @relation(fields: [userId], references: [id])
+  event         Event                    @relation(fields: [eventId], references: [id])
+  speedDating   SpeedDatingRegistration?
+  feedback      Feedback?
+  shortlistedAt DateTime?
+  checkedInAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime                 @default(now())
+
+  @@unique([userId, eventId])
+}
+
+model SpeedDatingRegistration {
+  id             String       @id @default(cuid())
+  registrationId String       @unique
+  sessionInfo    String?
+  status         String       @default("PENDING")
+  registration   Registration @relation(fields: [registrationId], references: [id])
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  publishedAt DateTime @default(now())
+  pinned      Boolean  @default(false)
+}
+
+model Certificate {
+  id               String   @id @default(cuid())
+  userId           String
+  eventId          String
+  issuedAt         DateTime @default(now())
+  verificationCode String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  event            Event    @relation(fields: [eventId], references: [id])
+}
+
+// One feedback submission per registration. Only collectible after attendance is
+// marked PRESENT; gates certificate download on the portal (see registrations
+// service). Rating fields are 1-10; npsScore is the standard 0-10 NPS question.
+model Feedback {
+  id             String   @id @default(cuid())
+  registrationId String   @unique
+  userId         String
+  eventId        String
+  overallRating  Int
+  topicRating    Int
+  qnaRating      Int
+  contentRating  Int
+  speakerRating  Int
+  venueRating    Int
+  timingRating   Int
+  npsScore       Int
+  takeaway       String?
+  topicsWanted   String?
+  speakerWanted  String?
+  comments       String?
+  createdAt      DateTime @default(now())
+
+  registration Registration @relation(fields: [registrationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  event        Event        @relation(fields: [eventId], references: [id])
+}
+
+// Singleton row (id is always "singleton") holding CMS-editable global site copy.
+model SiteSettings {
+  id           String @id @default("singleton")
+  contactEmail String @default("recruitment@blibli.com")
+}
+
+// Generic per-module config store (one row per module key: "speed_dating",
+// "feedback", "certificate") so each admin settings page can evolve its own JSON
+// shape without a schema migration per field.
+model ModuleSettings {
+  key       String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// Persistent invite audience for event marketing blasts — synced from past
+// registrants and/or added manually by an admin.
+model MarketingContact {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  source    String   @default("manual") // "manual" | "registrant"
+  createdAt DateTime @default(now())
+}
+
+model EmailCampaign {
+  id             String                   @id @default(cuid())
+  subject        String
+  bodyHtml       String
+  createdAt      DateTime                 @default(now())
+  sentAt         DateTime?
+  recipientCount Int                      @default(0)
+  sentCount      Int                      @default(0)
+  failedCount    Int                      @default(0)
+  recipients     EmailCampaignRecipient[]
+}
+
+model EmailCampaignRecipient {
+  id         String        @id @default(cuid())
+  campaignId String
+  email      String
+  name       String?
+  status     String        @default("PENDING") // PENDING | SENT | FAILED
+  error      String?
+  campaign   EmailCampaign @relation(fields: [campaignId], references: [id])
+}
+
+// Scheduled per-event email reminder. `status` sweep is analogous to the event
+// auto-complete sweep — a periodic background job sends anything due.
+model EventReminder {
+  id             String    @id @default(cuid())
+  eventId        String
+  sendAt         DateTime
+  subject        String
+  bodyHtml       String
+  status         String    @default("PENDING") // PENDING | SENT | FAILED
+  sentAt         DateTime?
+  recipientCount Int       @default(0)
+  sentCount      Int       @default(0)
+  failedCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  event          Event     @relation(fields: [eventId], references: [id])
+}

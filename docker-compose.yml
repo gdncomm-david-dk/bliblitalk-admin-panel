@@ -1,0 +1,41 @@
+# Full local stack (db + single fullstack app container).
+# For just the database (e.g. running the app via `pnpm dev` outside Docker),
+# use `docker-compose up -d db`.
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: blibli
+      POSTGRES_PASSWORD: blibli
+      POSTGRES_DB: blibli_talk
+    ports:
+      - "5432:5432"
+    volumes:
+      - blibli_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blibli -d blibli_talk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://blibli:blibli@db:5432/blibli_talk?schema=public
+      ADMIN_JWT_SECRET: change-me-in-prod
+      COOKIE_NAME: blibli_talk_session
+      LOG_LEVEL: info
+      PUBLIC_FE_ORIGIN: http://localhost:5173
+      ADMIN_FE_ORIGIN: http://localhost:4000
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  blibli_pgdata:
