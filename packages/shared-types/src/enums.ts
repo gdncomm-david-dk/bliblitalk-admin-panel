@@ -33,3 +33,15 @@ export const Attendance = {
   PENDING: "PENDING",
 } as const;
 export type Attendance = (typeof Attendance)[keyof typeof Attendance];
+
+export const ReminderKind = {
+  CUSTOM: "CUSTOM",
+  SHORTLIST_RESULT: "SHORTLIST_RESULT",
+} as const;
+export type ReminderKind = (typeof ReminderKind)[keyof typeof ReminderKind];
+
+export const EmploymentType = {
+  INTERNAL: "INTERNAL",
+  EXTERNAL: "EXTERNAL",
+} as const;
+export type EmploymentType = (typeof EmploymentType)[keyof typeof EmploymentType];

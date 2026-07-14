@@ -101,6 +101,46 @@ describe("admin events CRUD", () => {
     expect(res.body.status).toBe("CANCELLED");
   });
 
+  it("manually overrides status, bypassing the publish lifecycle's own guardrails", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent
+      .post("/api/admin/events")
+      .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status` }));
+
+    // A draft has never gone through /publish, so the guided lifecycle would
+    // never allow DRAFT -> COMPLETED directly — the manual override can.
+    const res = await agent
+      .patch(`/api/admin/events/${created.body.id}/status`)
+      .send({ status: "COMPLETED" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("COMPLETED");
+  });
+
+  it("rejects an invalid status value on the manual override", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent
+      .post("/api/admin/events")
+      .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-invalid` }));
+
+    const res = await agent
+      .patch(`/api/admin/events/${created.body.id}/status`)
+      .send({ status: "NOT_A_REAL_STATUS" });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects participants from the manual status override (no permission)", async () => {
+    const admin = await loginAs("superadmin@gdn-commerce.com");
+    const created = await admin
+      .post("/api/admin/events")
+      .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-forbidden` }));
+
+    const participant = await loginAs("demo@gdn-commerce.com");
+    const res = await participant
+      .patch(`/api/admin/events/${created.body.id}/status`)
+      .send({ status: "PUBLISHED" });
+    expect(res.status).toBe(403);
+  });
+
   it("deletes a draft event with no registrations", async () => {
     const agent = await loginAs("superadmin@gdn-commerce.com");
     const created = await agent

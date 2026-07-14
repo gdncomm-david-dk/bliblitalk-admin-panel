@@ -9,6 +9,7 @@ import type {
   EventDTO,
 } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
+import { useToastStore } from "../../../store/toastStore";
 import { ImageUploadField } from "../../../components/ImageUploadField";
 import { StatCard } from "./StatCard";
 import { FIELD_CLASS, TEXTAREA_CLASS } from "./fieldStyles";
@@ -63,8 +64,8 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [form, setForm] = useState<FormState>(fromEvent(event));
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const showToast = useToastStore((s) => s.show);
 
   useEffect(() => setForm(fromEvent(event)), [event]);
 
@@ -99,7 +100,6 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setSaving(true);
     try {
       const payload: Partial<AdminEventInput> = {
@@ -119,7 +119,7 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
         thumbnailUrl: form.thumbnailUrl || null,
       };
       await api.patch<EventDTO>(`/admin/events/${event.id}`, payload);
-      setNotice("Saved.");
+      showToast("Event saved successfully.");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to save event.");
@@ -147,7 +147,6 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
       </div>
 
       {error && <p className="mt-3 text-sm font-medium text-status-red">{error}</p>}
-      {notice && <p className="mt-3 text-sm font-medium text-status-green">{notice}</p>}
 
       <form onSubmit={onSubmit} className="mt-4 space-y-4 rounded-2xl border border-line bg-white p-6">
         <div>

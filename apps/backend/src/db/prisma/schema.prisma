@@ -37,11 +37,22 @@ enum Attendance {
   PENDING
 }
 
+enum ReminderKind {
+  CUSTOM
+  SHORTLIST_RESULT
+}
+
+enum EmploymentType {
+  INTERNAL
+  EXTERNAL
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
   name          String
   role              Role           @default(PARTICIPANT)
+  employmentType    EmploymentType @default(EXTERNAL)
   department        String?
   position          String?
   phone             String?
@@ -250,17 +261,25 @@ model EmailCampaignRecipient {
 
 // Scheduled per-event email reminder. `status` sweep is analogous to the event
 // auto-complete sweep — a periodic background job sends anything due.
+//
+// kind CUSTOM: subject/bodyHtml only, sent to SHORTLISTED registrants.
+// kind SHORTLIST_RESULT: subject/bodyHtml go to SHORTLISTED registrants,
+// subjectNotShortlisted/bodyHtmlNotShortlisted go to everyone else still
+// active (REGISTERED/WAITING/REJECTED) — one send, two audiences.
 model EventReminder {
-  id             String    @id @default(cuid())
-  eventId        String
-  sendAt         DateTime
-  subject        String
-  bodyHtml       String
-  status         String    @default("PENDING") // PENDING | SENT | FAILED
-  sentAt         DateTime?
-  recipientCount Int       @default(0)
-  sentCount      Int       @default(0)
-  failedCount    Int       @default(0)
-  createdAt      DateTime  @default(now())
-  event          Event     @relation(fields: [eventId], references: [id])
+  id                     String       @id @default(cuid())
+  eventId                String
+  kind                   ReminderKind @default(CUSTOM)
+  sendAt                 DateTime
+  subject                String
+  bodyHtml               String
+  subjectNotShortlisted  String?
+  bodyHtmlNotShortlisted String?
+  status                 String       @default("PENDING") // PENDING | SENT | FAILED
+  sentAt                 DateTime?
+  recipientCount         Int          @default(0)
+  sentCount              Int          @default(0)
+  failedCount            Int          @default(0)
+  createdAt              DateTime     @default(now())
+  event                  Event        @relation(fields: [eventId], references: [id])
 }

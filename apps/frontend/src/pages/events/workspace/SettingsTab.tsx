@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AdminEventInput, EventDisplayConfig, EventDTO } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
+import { useToastStore } from "../../../store/toastStore";
 import { FIELD_CLASS } from "./fieldStyles";
 
 const DISPLAY_TOGGLES: { key: keyof EventDisplayConfig; label: string }[] = [
@@ -20,9 +21,9 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
   const [enableFeedback, setEnableFeedback] = useState(event.enableFeedback);
   const [displayConfig, setDisplayConfig] = useState<EventDisplayConfig>(event.displayConfig);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [togglingRegistration, setTogglingRegistration] = useState(false);
+  const showToast = useToastStore((s) => s.show);
 
   function toggleDisplay(key: keyof EventDisplayConfig, value: boolean) {
     setDisplayConfig((prev) => ({ ...prev, [key]: value }));
@@ -30,7 +31,6 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
 
   async function onSave() {
     setError(null);
-    setNotice(null);
     setSaving(true);
     try {
       const payload: Partial<AdminEventInput> = {
@@ -42,7 +42,7 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
         displayConfig,
       };
       await api.patch<EventDTO>(`/admin/events/${event.id}`, payload);
-      setNotice("Saved.");
+      showToast("Settings saved successfully.");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to save settings.");
@@ -57,6 +57,7 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
     try {
       const action = event.status === "REGISTRATION_CLOSED" ? "open-registration" : "close-registration";
       await api.post(`/admin/events/${event.id}/${action}`);
+      showToast(action === "open-registration" ? "Registration reopened." : "Registration closed.");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update registration status.");
@@ -130,7 +131,6 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
       </div>
 
       {error && <p className="text-sm font-medium text-status-red">{error}</p>}
-      {notice && <p className="text-sm font-medium text-status-green">{notice}</p>}
 
       <button
         onClick={onSave}

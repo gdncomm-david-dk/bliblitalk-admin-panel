@@ -4,7 +4,7 @@ import { AdminShell } from "../layouts/AdminShell";
 import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
 import { UnauthorizedPage } from "../pages/UnauthorizedPage";
-import { ModulePlaceholder } from "../pages/modules/ModulePlaceholder";
+import { SiteSettingsPage } from "../pages/settings/SiteSettingsPage";
 import { EventsListPage } from "../pages/events/EventsListPage";
 import { EventFormPage } from "../pages/events/EventFormPage";
 import { EventWorkspacePage } from "../pages/events/EventWorkspacePage";
@@ -13,6 +13,7 @@ import { SpeedDatingSettingsPage } from "../pages/settings/SpeedDatingSettingsPa
 import { FeedbackSettingsPage } from "../pages/settings/FeedbackSettingsPage";
 import { CertificateSettingsPage } from "../pages/settings/CertificateSettingsPage";
 import { RegistrantsPage } from "../pages/registrants/RegistrantsPage";
+import { RolesPage } from "../pages/roles/RolesPage";
 import { MarketingEmailPage } from "../pages/marketing/MarketingEmailPage";
 
 export function App() {
@@ -37,17 +38,10 @@ export function App() {
           <Route path="feedback-settings" element={<FeedbackSettingsPage />} />
           <Route path="certificate-settings" element={<CertificateSettingsPage />} />
           <Route path="registrants" element={<RegistrantsPage />} />
+          <Route path="roles" element={<RolesPage />} />
           <Route path="marketing" element={<MarketingEmailPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
-          <Route
-            path="settings"
-            element={
-              <ModulePlaceholder
-                title="Settings"
-                description="Site settings, roles, and CMS-editable content."
-              />
-            }
-          />
+          <Route path="settings" element={<SiteSettingsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

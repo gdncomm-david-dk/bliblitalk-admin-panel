@@ -12,3 +12,12 @@ export async function getSiteSettings(): Promise<SiteSettingsDTO> {
   });
   return { contactEmail: row.contactEmail };
 }
+
+export async function setSiteSettings(data: SiteSettingsDTO): Promise<SiteSettingsDTO> {
+  const row = await prisma.siteSettings.upsert({
+    where: { id: SINGLETON_ID },
+    create: { id: SINGLETON_ID, contactEmail: data.contactEmail },
+    update: { contactEmail: data.contactEmail },
+  });
+  return { contactEmail: row.contactEmail };
+}

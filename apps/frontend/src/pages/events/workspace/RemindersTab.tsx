@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import type { EventReminderDTO } from "@repo/shared-types";
+import { ReminderKind } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
 import { FIELD_CLASS, TEXTAREA_CLASS } from "./fieldStyles";
 import { TrashIcon } from "../../../components/icons";
+import { cn } from "../../../utils/cn";
 
 const STATUS_CLASSES: Record<string, string> = {
   PENDING: "bg-amber-50 text-status-orange",
@@ -11,11 +13,19 @@ const STATUS_CLASSES: Record<string, string> = {
   FAILED: "bg-red-50 text-status-red",
 };
 
+const KIND_LABELS: Record<string, string> = {
+  CUSTOM: "Custom",
+  SHORTLIST_RESULT: "Shortlist Result",
+};
+
 export function RemindersTab({ eventId }: { eventId: string }) {
   const [reminders, setReminders] = useState<EventReminderDTO[] | null>(null);
+  const [kind, setKind] = useState<ReminderKind>(ReminderKind.CUSTOM);
   const [sendAt, setSendAt] = useState("");
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [subjectNotShortlisted, setSubjectNotShortlisted] = useState("");
+  const [bodyHtmlNotShortlisted, setBodyHtmlNotShortlisted] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,19 +40,34 @@ export function RemindersTab({ eventId }: { eventId: string }) {
 
   useEffect(load, [eventId]);
 
+  const isShortlistResult = kind === ReminderKind.SHORTLIST_RESULT;
+  const canSubmit =
+    !!sendAt &&
+    !!subject.trim() &&
+    !!bodyHtml.trim() &&
+    (!isShortlistResult || (!!subjectNotShortlisted.trim() && !!bodyHtmlNotShortlisted.trim()));
+
+  function resetForm() {
+    setSendAt("");
+    setSubject("");
+    setBodyHtml("");
+    setSubjectNotShortlisted("");
+    setBodyHtmlNotShortlisted("");
+  }
+
   async function onCreate() {
-    if (!sendAt || !subject.trim() || !bodyHtml.trim()) return;
+    if (!canSubmit) return;
     setError(null);
     setCreating(true);
     try {
       await api.post(`/admin/events/${eventId}/reminders`, {
+        kind,
         sendAt: new Date(sendAt).toISOString(),
         subject,
         bodyHtml,
+        ...(isShortlistResult ? { subjectNotShortlisted, bodyHtmlNotShortlisted } : {}),
       });
-      setSendAt("");
-      setSubject("");
-      setBodyHtml("");
+      resetForm();
       load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to schedule reminder.");
@@ -65,8 +90,32 @@ export function RemindersTab({ eventId }: { eventId: string }) {
     <div>
       <div className="rounded-2xl border border-line bg-white p-5">
         <p className="text-sm font-semibold text-ink">Schedule a Reminder</p>
-        <p className="mt-1 text-xs text-muted">
-          Sent by email to everyone still actively registered (not cancelled or rejected) at the scheduled time.
+
+        <div className="mt-3 inline-flex rounded-full border border-line bg-surface p-1">
+          {(
+            [
+              { value: ReminderKind.CUSTOM, label: "Custom Reminder" },
+              { value: ReminderKind.SHORTLIST_RESULT, label: "Shortlist Result" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setKind(opt.value)}
+              className={cn(
+                "rounded-full px-4 py-1.5 text-sm font-semibold transition-colors",
+                kind === opt.value ? "bg-primary text-white" : "text-muted hover:text-ink",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3 text-xs text-muted">
+          {isShortlistResult
+            ? "Sent once, to every still-active participant (not cancelled): shortlisted registrants get the first message, everyone else gets the second."
+            : "Sent by email to SHORTLISTED registrants only, at the scheduled time."}
         </p>
 
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -80,13 +129,17 @@ export function RemindersTab({ eventId }: { eventId: string }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-muted">Subject</label>
+            <label className="mb-1 block text-xs font-semibold text-muted">
+              {isShortlistResult ? "Subject — Shortlisted" : "Subject"}
+            </label>
             <input value={subject} onChange={(e) => setSubject(e.target.value)} className={FIELD_CLASS} />
           </div>
         </div>
 
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-semibold text-muted">Message (HTML)</label>
+          <label className="mb-1 block text-xs font-semibold text-muted">
+            {isShortlistResult ? "Message — Shortlisted (HTML)" : "Message (HTML)"}
+          </label>
           <textarea
             value={bodyHtml}
             onChange={(e) => setBodyHtml(e.target.value)}
@@ -95,11 +148,37 @@ export function RemindersTab({ eventId }: { eventId: string }) {
           />
         </div>
 
+        {isShortlistResult && (
+          <>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-start-2">
+                <label className="mb-1 block text-xs font-semibold text-muted">Subject — Not shortlisted</label>
+                <input
+                  value={subjectNotShortlisted}
+                  onChange={(e) => setSubjectNotShortlisted(e.target.value)}
+                  className={FIELD_CLASS}
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="mb-1 block text-xs font-semibold text-muted">
+                Message — Not shortlisted (HTML)
+              </label>
+              <textarea
+                value={bodyHtmlNotShortlisted}
+                onChange={(e) => setBodyHtmlNotShortlisted(e.target.value)}
+                className={`${TEXTAREA_CLASS} h-24`}
+                placeholder="<p>Thanks for applying — unfortunately we couldn't shortlist you this time.</p>"
+              />
+            </div>
+          </>
+        )}
+
         {error && <p className="mt-3 text-sm font-medium text-status-red">{error}</p>}
 
         <button
           onClick={onCreate}
-          disabled={creating || !sendAt || !subject.trim() || !bodyHtml.trim()}
+          disabled={creating || !canSubmit}
           className="mt-4 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
         >
           {creating ? "Scheduling…" : "Schedule Reminder"}
@@ -111,6 +190,7 @@ export function RemindersTab({ eventId }: { eventId: string }) {
           <thead className="border-b border-line bg-surface text-xs font-semibold uppercase tracking-wide text-muted">
             <tr>
               <th className="px-4 py-3">Send At</th>
+              <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Subject</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Delivered / Failed</th>
@@ -120,13 +200,13 @@ export function RemindersTab({ eventId }: { eventId: string }) {
           <tbody className="divide-y divide-line">
             {reminders === null ? (
               <tr>
-                <td className="px-4 py-6 text-muted" colSpan={5}>
+                <td className="px-4 py-6 text-muted" colSpan={6}>
                   Loading reminders…
                 </td>
               </tr>
             ) : reminders.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-muted" colSpan={5}>
+                <td className="px-4 py-6 text-muted" colSpan={6}>
                   No reminders scheduled for this event yet.
                 </td>
               </tr>
@@ -136,6 +216,7 @@ export function RemindersTab({ eventId }: { eventId: string }) {
                   <td className="whitespace-nowrap px-4 py-3 text-muted">
                     {dayjs(r.sendAt).format("D MMM YYYY, HH:mm")}
                   </td>
+                  <td className="px-4 py-3 text-muted">{KIND_LABELS[r.kind] ?? r.kind}</td>
                   <td className="max-w-xs truncate px-4 py-3 font-medium text-ink">{r.subject}</td>
                   <td className="px-4 py-3">
                     <span

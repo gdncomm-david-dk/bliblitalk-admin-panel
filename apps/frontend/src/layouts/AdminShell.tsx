@@ -15,11 +15,13 @@ import {
   MailIcon,
   SearchIcon,
   SettingsIcon,
+  ShieldIcon,
   SidebarIcon,
   StarIcon,
   UsersIcon,
 } from "../components/icons";
 import { UserMenu } from "../components/UserMenu";
+import { ToastContainer } from "../components/Toast";
 
 const COLLAPSE_KEY = "admin.sidebar.collapsed";
 
@@ -44,6 +46,7 @@ const NAV: NavGroup[] = [
       { to: "/feedback-settings", label: "Reviews & Feedback", icon: StarIcon, permission: Permission.EVENT_READ },
       { to: "/certificate-settings", label: "Certificates", icon: AwardIcon, permission: Permission.CERTIFICATE_MANAGE },
       { to: "/registrants", label: "User Management", icon: UsersIcon, permission: Permission.USER_MANAGE },
+      { to: "/roles", label: "Role", icon: ShieldIcon, permission: Permission.ROLE_MANAGE },
       { to: "/marketing", label: "Marketing Email", icon: MailIcon, permission: Permission.MARKETING_MANAGE },
       { to: "/analytics", label: "Reports", icon: BarChartIcon, permission: Permission.ANALYTICS_READ },
       { to: "/settings", label: "Settings", icon: SettingsIcon, permission: Permission.SETTINGS_MANAGE },
@@ -184,6 +187,8 @@ export function AdminShell() {
           <Outlet />
         </main>
       </div>
+
+      <ToastContainer />
     </div>
   );
 }

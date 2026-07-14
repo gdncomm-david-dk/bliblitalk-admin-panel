@@ -79,7 +79,12 @@ export function renderCertificate(data: CertificateData): string {
     text-transform: uppercase;
     white-space: nowrap;
   }
-  .wordmark-logo { width: 148px; height: auto; display: block; }
+  /* The source PNG (Logo-BlibliTalk-White.png, 1000x397) has asymmetric
+     transparent padding (top 22px, bottom 81px), so its glyphs sit above the
+     canvas's geometric center. align-items:center on .title-row centers the
+     box, not the glyphs — nudge down so the visible wordmark lines up with
+     the eyebrow text and bag logo instead of reading as "too high". */
+  .wordmark-logo { width: 148px; height: auto; display: block; transform: translateY(4.4px); }
   .header-logo svg { width: 190px; height: auto; }
 
   .content { margin-top: 90px; max-width: 88%; position: relative; z-index: 2; }
@@ -103,12 +108,14 @@ export function renderCertificate(data: CertificateData): string {
   /* decorative shapes, bottom-right */
   .shape { position: absolute; z-index: 1; }
   .shape-circle {
-    right: 88px; bottom: 92px;
-    width: 176px; height: 176px; border-radius: 50%;
+    right: 130px; bottom: 88px;
+    width: 208px; height: 208px; border-radius: 50%;
     background: #ffc400;
   }
   .shape-square {
-    right: 360px; bottom: 44px;
+    /* bottom intentionally tight: the rotated square's bounding box should
+       bleed off the certificate's bottom edge, not float clear of it. */
+    right: 360px; bottom: 18px;
     width: 176px; height: 138px; border-radius: 34px;
     background: #f5484a;
     transform: rotate(-13deg);

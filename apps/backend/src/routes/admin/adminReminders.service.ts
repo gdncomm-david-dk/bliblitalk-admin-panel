@@ -1,5 +1,5 @@
 import type { EventReminder } from "@prisma/client";
-import { RegistrationStatus } from "@repo/shared-types";
+import { ReminderKind, RegistrationStatus } from "@repo/shared-types";
 import type { CreateReminderInput, EventReminderDTO } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
@@ -9,9 +9,12 @@ function toEventReminderDTO(r: EventReminder): EventReminderDTO {
   return {
     id: r.id,
     eventId: r.eventId,
+    kind: r.kind as EventReminderDTO["kind"],
     sendAt: r.sendAt.toISOString(),
     subject: r.subject,
     bodyHtml: r.bodyHtml,
+    subjectNotShortlisted: r.subjectNotShortlisted,
+    bodyHtmlNotShortlisted: r.bodyHtmlNotShortlisted,
     status: r.status as EventReminderDTO["status"],
     sentAt: r.sentAt ? r.sentAt.toISOString() : null,
     recipientCount: r.recipientCount,
@@ -43,9 +46,12 @@ export async function createReminder(
   const reminder = await prisma.eventReminder.create({
     data: {
       eventId,
+      kind: input.kind,
       sendAt: new Date(input.sendAt),
       subject: input.subject,
       bodyHtml: input.bodyHtml,
+      subjectNotShortlisted: input.subjectNotShortlisted ?? null,
+      bodyHtmlNotShortlisted: input.bodyHtmlNotShortlisted ?? null,
       status: "PENDING",
     },
   });
@@ -63,11 +69,76 @@ export async function cancelReminder(eventId: string, reminderId: string): Promi
   await prisma.eventReminder.delete({ where: { id: reminderId } });
 }
 
+type Recipient = { email: string; name: string };
+
+/** CUSTOM reminders (e.g. "event starts soon") only make sense for confirmed attendees. */
+async function sendCustomReminder(reminder: EventReminder): Promise<void> {
+  const registrations = await prisma.registration.findMany({
+    where: { eventId: reminder.eventId, status: RegistrationStatus.SHORTLISTED },
+    include: { user: { select: { email: true, name: true } } },
+  });
+  const recipients: Recipient[] = registrations.map((r) => ({ email: r.user.email, name: r.user.name }));
+  const result = await sendBulkEmail(recipients, reminder.subject, reminder.bodyHtml);
+  await prisma.eventReminder.update({
+    where: { id: reminder.id },
+    data: {
+      status: "SENT",
+      sentAt: new Date(),
+      recipientCount: recipients.length,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+    },
+  });
+}
+
 /**
- * Background sweep: sends every reminder whose `sendAt` has arrived to everyone still
- * actively registered for that event. Processed per-row (not a single updateMany) since
- * each reminder needs its own recipient list and send result. One failing reminder
- * doesn't stop the others from being processed.
+ * SHORTLIST_RESULT reminders notify every still-active registrant of their outcome —
+ * one send, two audiences: shortlisted get subject/bodyHtml, everyone else (REGISTERED/
+ * WAITING/REJECTED, i.e. not CANCELLED and not SHORTLISTED) gets the "not shortlisted"
+ * variant. Both fields are guaranteed present by CreateReminderInput's validation for
+ * this kind — the guard below only protects against unexpected null data.
+ */
+async function sendShortlistResultReminder(reminder: EventReminder): Promise<void> {
+  if (!reminder.subjectNotShortlisted || !reminder.bodyHtmlNotShortlisted) {
+    throw new AppError(
+      "MISSING_CONTENT",
+      "SHORTLIST_RESULT reminder is missing its not-shortlisted message",
+      500,
+    );
+  }
+
+  const registrations = await prisma.registration.findMany({
+    where: { eventId: reminder.eventId, status: { not: RegistrationStatus.CANCELLED } },
+    include: { user: { select: { email: true, name: true } } },
+  });
+  const shortlisted: Recipient[] = registrations
+    .filter((r) => r.status === RegistrationStatus.SHORTLISTED)
+    .map((r) => ({ email: r.user.email, name: r.user.name }));
+  const others: Recipient[] = registrations
+    .filter((r) => r.status !== RegistrationStatus.SHORTLISTED)
+    .map((r) => ({ email: r.user.email, name: r.user.name }));
+
+  const [shortlistedResult, othersResult] = await Promise.all([
+    sendBulkEmail(shortlisted, reminder.subject, reminder.bodyHtml),
+    sendBulkEmail(others, reminder.subjectNotShortlisted, reminder.bodyHtmlNotShortlisted),
+  ]);
+
+  await prisma.eventReminder.update({
+    where: { id: reminder.id },
+    data: {
+      status: "SENT",
+      sentAt: new Date(),
+      recipientCount: registrations.length,
+      sentCount: shortlistedResult.sentCount + othersResult.sentCount,
+      failedCount: shortlistedResult.failedCount + othersResult.failedCount,
+    },
+  });
+}
+
+/**
+ * Background sweep: sends every reminder whose `sendAt` has arrived. Processed per-row
+ * (not a single updateMany) since each reminder needs its own recipient list and send
+ * result. One failing reminder doesn't stop the others from being processed.
  */
 export async function sweepDueReminders(): Promise<void> {
   const due = await prisma.eventReminder.findMany({
@@ -76,25 +147,11 @@ export async function sweepDueReminders(): Promise<void> {
 
   for (const reminder of due) {
     try {
-      const registrations = await prisma.registration.findMany({
-        where: {
-          eventId: reminder.eventId,
-          status: { notIn: [RegistrationStatus.CANCELLED, RegistrationStatus.REJECTED] },
-        },
-        include: { user: { select: { email: true, name: true } } },
-      });
-      const recipients = registrations.map((r) => ({ email: r.user.email, name: r.user.name }));
-      const result = await sendBulkEmail(recipients, reminder.subject, reminder.bodyHtml);
-      await prisma.eventReminder.update({
-        where: { id: reminder.id },
-        data: {
-          status: "SENT",
-          sentAt: new Date(),
-          recipientCount: recipients.length,
-          sentCount: result.sentCount,
-          failedCount: result.failedCount,
-        },
-      });
+      if (reminder.kind === ReminderKind.SHORTLIST_RESULT) {
+        await sendShortlistResultReminder(reminder);
+      } else {
+        await sendCustomReminder(reminder);
+      }
     } catch {
       try {
         await prisma.eventReminder.update({

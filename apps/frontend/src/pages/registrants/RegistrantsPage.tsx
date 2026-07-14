@@ -1,13 +1,31 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import type { RegistrantListResult } from "@repo/shared-types";
+import { EmploymentType, type RegistrantListResult } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../services/api";
 import { SearchIcon, DownloadIcon } from "../../components/icons";
+import { FIELD_CLASS } from "../events/workspace/fieldStyles";
 
 const PAGE_SIZE = 20;
 
+const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
+  [EmploymentType.INTERNAL]: "Internal (Employee)",
+  [EmploymentType.EXTERNAL]: "External",
+};
+
 function toCsv(result: RegistrantListResult): string {
-  const header = ["Name", "Email", "Phone", "Institution", "Department", "Position", "Events Joined", "Last Joined", "Registered Since"];
+  const header = [
+    "Name",
+    "Email",
+    "Phone",
+    "Institution",
+    "Department",
+    "Position",
+    "YoE",
+    "Type",
+    "Events Joined",
+    "Last Joined",
+    "Registered Since",
+  ];
   const rows = result.items.map((r) => [
     r.name,
     r.email,
@@ -15,6 +33,8 @@ function toCsv(result: RegistrantListResult): string {
     r.institution ?? "",
     r.department ?? "",
     r.position ?? "",
+    r.yearsOfExperience ?? "",
+    EMPLOYMENT_TYPE_LABELS[r.employmentType],
     String(r.eventsJoinedCount),
     r.lastJoinedAt ? dayjs(r.lastJoinedAt).format("YYYY-MM-DD") : "",
     dayjs(r.createdAt).format("YYYY-MM-DD"),
@@ -28,6 +48,7 @@ export function RegistrantsPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
@@ -39,6 +60,19 @@ export function RegistrantsPage() {
         setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to load registrants.");
       });
   }, [query, page]);
+
+  async function onEmploymentTypeChange(id: string, employmentType: EmploymentType) {
+    setSavingId(id);
+    setError(null);
+    try {
+      await api.patch(`/admin/users/${id}/employment-type`, { employmentType });
+      setResult((r) => (r ? { ...r, items: r.items.map((u) => (u.id === id ? { ...u, employmentType } : u)) } : r));
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update type.");
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   function exportCsv() {
     if (!result) return;
@@ -99,6 +133,9 @@ export function RegistrantsPage() {
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Institution</th>
+              <th className="px-4 py-3">Job Title</th>
+              <th className="px-4 py-3">YoE</th>
+              <th className="min-w-[170px] px-4 py-3">Type</th>
               <th className="px-4 py-3">Events Joined</th>
               <th className="px-4 py-3">Last Joined</th>
             </tr>
@@ -106,13 +143,13 @@ export function RegistrantsPage() {
           <tbody className="divide-y divide-line">
             {result === null ? (
               <tr>
-                <td className="px-4 py-6 text-muted" colSpan={5}>
+                <td className="px-4 py-6 text-muted" colSpan={8}>
                   Loading…
                 </td>
               </tr>
             ) : result.items.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-muted" colSpan={5}>
+                <td className="px-4 py-6 text-muted" colSpan={8}>
                   No registrants match this search.
                 </td>
               </tr>
@@ -122,6 +159,22 @@ export function RegistrantsPage() {
                   <td className="px-4 py-3 font-medium text-ink">{r.name}</td>
                   <td className="px-4 py-3 text-muted">{r.email}</td>
                   <td className="px-4 py-3 text-muted">{r.institution ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted">{r.position ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted">{r.yearsOfExperience ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={r.employmentType}
+                      onChange={(e) => onEmploymentTypeChange(r.id, e.target.value as EmploymentType)}
+                      disabled={savingId === r.id}
+                      className={`${FIELD_CLASS} h-9 disabled:opacity-60`}
+                    >
+                      {Object.values(EmploymentType).map((type) => (
+                        <option key={type} value={type}>
+                          {EMPLOYMENT_TYPE_LABELS[type]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-muted">{r.eventsJoinedCount}</td>
                   <td className="px-4 py-3 text-muted">
                     {r.lastJoinedAt ? dayjs(r.lastJoinedAt).format("D MMM YYYY") : "—"}

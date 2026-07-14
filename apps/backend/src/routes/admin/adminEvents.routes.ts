@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AdminEventInput, AdminEventListQuery, AdminEventUpdateInput } from "@repo/shared-types";
+import { AdminEventInput, AdminEventListQuery, AdminEventStatusInput, AdminEventUpdateInput } from "@repo/shared-types";
 import { Permission } from "@repo/auth";
 import { requireAuth, requirePermission } from "../../middleware/requireAuth";
 import { requireEventAccess } from "../../middleware/eventScope";
@@ -13,6 +13,7 @@ import {
   listAdminEvents,
   openAdminEventRegistration,
   publishAdminEvent,
+  setAdminEventStatus,
   updateAdminEvent,
 } from "./adminEvents.service";
 
@@ -94,6 +95,24 @@ adminEventsRoutes.delete(
     try {
       await deleteAdminEvent(req.params.id!);
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// PATCH /admin/events/:id/status — manual override, any EventStatus value
+adminEventsRoutes.patch(
+  "/:id/status",
+  requireAuth,
+  requirePermission(Permission.EVENT_PUBLISH),
+  requireEventAccess("id"),
+  validate(AdminEventStatusInput),
+  async (req, res, next) => {
+    try {
+      const { status } = req.body as AdminEventStatusInput;
+      const event = await setAdminEventStatus(req.params.id!, status);
+      res.json(event);
     } catch (err) {
       next(err);
     }

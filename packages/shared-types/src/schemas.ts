@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EventStatus, RegistrationStatus, Attendance, Role } from "./enums";
+import { EventStatus, RegistrationStatus, Attendance, Role, ReminderKind, EmploymentType } from "./enums";
 
 // ---- Auth ----
 export const LoginInput = z.object({
@@ -172,6 +172,34 @@ export const SiteSettingsDTO = z.object({
 });
 export type SiteSettingsDTO = z.infer<typeof SiteSettingsDTO>;
 
+// ---- Login page carousel (admin CMS + participant portal each have their own) ----
+export const LoginCarouselSlideDTO = z.object({
+  heading: z.string().min(1),
+  imageUrl: z.string().nullable(),
+});
+export type LoginCarouselSlideDTO = z.infer<typeof LoginCarouselSlideDTO>;
+
+export const LoginCarouselSettingsDTO = z.object({
+  slides: z.array(LoginCarouselSlideDTO),
+});
+export type LoginCarouselSettingsDTO = z.infer<typeof LoginCarouselSettingsDTO>;
+
+export const DEFAULT_ADMIN_LOGIN_CAROUSEL_SETTINGS: LoginCarouselSettingsDTO = {
+  slides: [
+    { heading: "Manage events end to end", imageUrl: null },
+    { heading: "Review shortlists and attendance", imageUrl: null },
+    { heading: "Run the Talent Engagement Platform", imageUrl: null },
+  ],
+};
+
+export const DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS: LoginCarouselSettingsDTO = {
+  slides: [
+    { heading: "Learn from the best practitioners", imageUrl: null },
+    { heading: "Connect with industry leaders", imageUrl: null },
+    { heading: "Grow your career with Blibli Talk", imageUrl: null },
+  ],
+};
+
 export const CertificateDTO = z.object({
   id: z.string(),
   eventTitle: z.string(),
@@ -306,6 +334,13 @@ export const AdminEventListQuery = z.object({
 });
 export type AdminEventListQuery = z.infer<typeof AdminEventListQuery>;
 
+// Manual status override — bypasses the publish/cancel lifecycle's own guardrails
+// (required-fields check, etc.) since the admin is explicitly forcing a value.
+export const AdminEventStatusInput = z.object({
+  status: z.nativeEnum(EventStatus),
+});
+export type AdminEventStatusInput = z.infer<typeof AdminEventStatusInput>;
+
 // ---- Admin CMS: participant management ----
 export const AdminRegistrationDTO = z.object({
   id: z.string(),
@@ -315,12 +350,14 @@ export const AdminRegistrationDTO = z.object({
   userAvatarUrl: z.string().nullable(),
   userDepartment: z.string().nullable(),
   userPosition: z.string().nullable(),
+  userYearsOfExperience: z.string().nullable(),
   status: z.nativeEnum(RegistrationStatus),
   attendance: z.nativeEnum(Attendance),
   createdAt: z.string(),
   shortlistedAt: z.string().nullable(),
   checkedInAt: z.string().nullable(),
   certificateCode: z.string().nullable(),
+  feedbackSubmitted: z.boolean(),
 });
 export type AdminRegistrationDTO = z.infer<typeof AdminRegistrationDTO>;
 
@@ -579,6 +616,9 @@ export const RegistrantDTO = z.object({
   institution: z.string().nullable(),
   department: z.string().nullable(),
   position: z.string().nullable(),
+  yearsOfExperience: z.string().nullable(),
+  role: z.nativeEnum(Role),
+  employmentType: z.nativeEnum(EmploymentType),
   eventsJoinedCount: z.number().int(),
   lastJoinedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -590,6 +630,31 @@ export const RegistrantListResult = z.object({
   total: z.number().int(),
 });
 export type RegistrantListResult = z.infer<typeof RegistrantListResult>;
+
+export const UpdateUserRoleInput = z.object({
+  role: z.nativeEnum(Role),
+});
+export type UpdateUserRoleInput = z.infer<typeof UpdateUserRoleInput>;
+
+export const UpdateUserEmploymentTypeInput = z.object({
+  employmentType: z.nativeEnum(EmploymentType),
+});
+export type UpdateUserEmploymentTypeInput = z.infer<typeof UpdateUserEmploymentTypeInput>;
+
+// Provisions a new Admin CMS staff account directly (no self-registration path for
+// staff — see auth.routes.ts /microsoft). Caller must hold Permission.ROLE_MANAGE;
+// the service additionally restricts `role` to ADMIN_ROLES (no provisioning PARTICIPANT).
+export const CreateAdminUserInput = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email(),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  // Can't reference @repo/auth's ADMIN_ROLES here (auth depends on shared-types, so
+  // that import would be circular) — excluding PARTICIPANT is the schema-level
+  // equivalent, so a future refactor can't accidentally drop the guard entirely by
+  // removing the service-layer ADMIN_ROLES check.
+  role: z.nativeEnum(Role).refine((r) => r !== Role.PARTICIPANT, "Role must be one of the Admin CMS roles"),
+});
+export type CreateAdminUserInput = z.infer<typeof CreateAdminUserInput>;
 
 // ---- Marketing: contacts + email campaigns ----
 export const MarketingContactDTO = z.object({
@@ -637,12 +702,19 @@ export type CreateCampaignInput = z.infer<typeof CreateCampaignInput>;
 export const EventReminderStatus = z.enum(["PENDING", "SENT", "FAILED"]);
 export type EventReminderStatus = z.infer<typeof EventReminderStatus>;
 
+// CUSTOM: subject/bodyHtml only, sent to SHORTLISTED registrants.
+// SHORTLIST_RESULT: subject/bodyHtml go to SHORTLISTED registrants,
+// subjectNotShortlisted/bodyHtmlNotShortlisted go to everyone else still
+// active — one send, two audiences.
 export const EventReminderDTO = z.object({
   id: z.string(),
   eventId: z.string(),
+  kind: z.nativeEnum(ReminderKind),
   sendAt: z.string(),
   subject: z.string(),
   bodyHtml: z.string(),
+  subjectNotShortlisted: z.string().nullable(),
+  bodyHtmlNotShortlisted: z.string().nullable(),
   status: EventReminderStatus,
   sentAt: z.string().nullable(),
   recipientCount: z.number().int(),
@@ -652,9 +724,30 @@ export const EventReminderDTO = z.object({
 });
 export type EventReminderDTO = z.infer<typeof EventReminderDTO>;
 
-export const CreateReminderInput = z.object({
-  sendAt: z.string().datetime({ offset: true }).or(z.string().min(1)),
-  subject: z.string().min(1),
-  bodyHtml: z.string().min(1),
-});
+export const CreateReminderInput = z
+  .object({
+    kind: z.nativeEnum(ReminderKind).optional().default(ReminderKind.CUSTOM),
+    sendAt: z.string().datetime({ offset: true }).or(z.string().min(1)),
+    subject: z.string().min(1),
+    bodyHtml: z.string().min(1),
+    subjectNotShortlisted: z.string().min(1).optional(),
+    bodyHtmlNotShortlisted: z.string().min(1).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.kind !== ReminderKind.SHORTLIST_RESULT) return;
+    if (!input.subjectNotShortlisted) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["subjectNotShortlisted"],
+        message: "Required for SHORTLIST_RESULT reminders",
+      });
+    }
+    if (!input.bodyHtmlNotShortlisted) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["bodyHtmlNotShortlisted"],
+        message: "Required for SHORTLIST_RESULT reminders",
+      });
+    }
+  });
 export type CreateReminderInput = z.infer<typeof CreateReminderInput>;

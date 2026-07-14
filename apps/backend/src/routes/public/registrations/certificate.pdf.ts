@@ -28,6 +28,13 @@ const px = (n: number) => n * SCALE;
 const WORDMARK_ASPECT = 397 / 1000; // height / width
 const BAG_LOGO_ASPECT = 48 / 136; // height / width
 
+// The wordmark PNG's glyphs occupy y=22..315 of its 397px-tall canvas (measured
+// directly from the source asset), not the full height — transparent padding is
+// 22px on top but 81px on the bottom. Centering the image's bounding box (as
+// doc.image does by default) therefore reads as visibly too high; center on the
+// glyphs' own midpoint instead.
+const WORDMARK_CONTENT_CENTER_Y_FRAC = (22 + 315) / 2 / 397;
+
 function pngBufferFromDataUri(dataUri: string): Buffer {
   const base64 = dataUri.slice(dataUri.indexOf(",") + 1);
   return Buffer.from(base64, "base64");
@@ -67,13 +74,15 @@ export function renderCertificatePdf(
 
     // Decorative shapes, bottom-right — geometry ported 1:1 from the CSS
     // (.shape-circle / .shape-square / .shape-teal), not eyeballed.
-    const circleRadius = px(176) / 2;
-    const circleCenter: [number, number] = [pageWidth - px(88) - circleRadius, pageHeight - px(92) - circleRadius];
+    const circleRadius = px(208) / 2;
+    const circleCenter: [number, number] = [pageWidth - px(130) - circleRadius, pageHeight - px(88) - circleRadius];
 
     const squareWidth = px(176);
     const squareHeight = px(138);
     const squareLeft = pageWidth - px(360) - squareWidth;
-    const squareTop = pageHeight - px(44) - squareHeight;
+    // bottom intentionally tight: the rotated square's bounding box should
+    // bleed off the certificate's bottom edge, not float clear of it.
+    const squareTop = pageHeight - px(18) - squareHeight;
     const squareCenter: [number, number] = [squareLeft + squareWidth / 2, squareTop + squareHeight / 2];
 
     const tealWidth = px(156);
@@ -110,10 +119,12 @@ export function renderCertificatePdf(
     doc
       .fillColor(WHITE)
       .text(eyebrowText, marginX, headerCenterY - eyebrowFontSize / 2, { lineBreak: false });
-    doc.image(wordmarkPng, marginX + eyebrowWidth + headerGap, headerCenterY - wordmarkHeight / 2, {
-      width: wordmarkWidth,
-      height: wordmarkHeight,
-    });
+    doc.image(
+      wordmarkPng,
+      marginX + eyebrowWidth + headerGap,
+      headerCenterY - wordmarkHeight * WORDMARK_CONTENT_CENTER_Y_FRAC,
+      { width: wordmarkWidth, height: wordmarkHeight },
+    );
     SVGtoPDF(
       doc,
       bagLogoSvg(bagLogoWidth, bagLogoHeight),

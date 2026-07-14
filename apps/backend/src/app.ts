@@ -22,6 +22,7 @@ import { adminFeedbackRoutes } from "./routes/admin/adminFeedback.routes";
 import { adminSpeedDatingRoutes } from "./routes/admin/adminSpeedDating.routes";
 import { adminUploadsRoutes, UPLOADS_DIR } from "./routes/admin/adminUploads.routes";
 import { adminModuleSettingsRoutes } from "./routes/admin/adminModuleSettings.routes";
+import { adminSiteSettingsRoutes } from "./routes/admin/adminSiteSettings.routes";
 import { adminUsersRoutes } from "./routes/admin/adminUsers.routes";
 import { adminMarketingRoutes } from "./routes/admin/adminMarketing.routes";
 import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
@@ -73,6 +74,7 @@ export function createApp() {
   app.use("/api/admin", adminSpeedDatingRoutes);
   app.use("/api/admin", adminUploadsRoutes);
   app.use("/api/admin", adminModuleSettingsRoutes);
+  app.use("/api/admin", adminSiteSettingsRoutes);
   app.use("/api/admin", adminUsersRoutes);
   app.use("/api/admin", adminMarketingRoutes);
   app.use("/api/admin", adminRemindersRoutes);

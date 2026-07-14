@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
+import { EventStatus } from "@repo/shared-types";
 import type { EventDTO } from "@repo/shared-types";
-import { getEventDisplayStatus, isEventLive } from "@repo/shared-utils";
+import { getEventDisplayStatus, isEventLive, statusLabel } from "@repo/shared-utils";
 import { api, ApiRequestError } from "../../services/api";
-import { StatusBadge } from "../../components/StatusBadge";
+import { useToastStore } from "../../store/toastStore";
 import {
   AwardIcon,
   BellIcon,
@@ -51,12 +52,9 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-function MoreMenu({ event, onPublish, onCancelEvent, onDelete }: {
-  event: EventDTO;
-  onPublish: () => void;
-  onCancelEvent: () => void;
-  onDelete: () => void;
-}) {
+const STATUS_OPTIONS = Object.values(EventStatus);
+
+function MoreMenu({ event, onDelete }: { event: EventDTO; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -68,6 +66,8 @@ function MoreMenu({ event, onPublish, onCancelEvent, onDelete }: {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
+
+  if (event.status !== "DRAFT") return null;
 
   return (
     <div className="relative" ref={ref}>
@@ -81,39 +81,15 @@ function MoreMenu({ event, onPublish, onCancelEvent, onDelete }: {
       </button>
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-40 w-48 overflow-hidden rounded-xl border border-line bg-white py-1 text-left shadow-soft">
-          {event.status === "DRAFT" && (
-            <button
-              onClick={() => {
-                setOpen(false);
-                onPublish();
-              }}
-              className="block w-full px-4 py-2 text-sm font-medium text-ink hover:bg-surface"
-            >
-              Publish
-            </button>
-          )}
-          {event.status !== "CANCELLED" && (
-            <button
-              onClick={() => {
-                setOpen(false);
-                onCancelEvent();
-              }}
-              className="block w-full px-4 py-2 text-sm font-medium text-status-red hover:bg-surface"
-            >
-              Cancel Event
-            </button>
-          )}
-          {event.status === "DRAFT" && (
-            <button
-              onClick={() => {
-                setOpen(false);
-                onDelete();
-              }}
-              className="block w-full px-4 py-2 text-sm font-medium text-status-red hover:bg-surface"
-            >
-              Delete
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="block w-full px-4 py-2 text-sm font-medium text-status-red hover:bg-surface"
+          >
+            Delete
+          </button>
         </div>
       )}
     </div>
@@ -127,6 +103,8 @@ export function EventWorkspacePage() {
   const [event, setEvent] = useState<EventDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const showToast = useToastStore((s) => s.show);
 
   const tabParam = searchParams.get("tab") as TabKey | null;
   const tab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : "overview";
@@ -147,25 +125,18 @@ export function EventWorkspacePage() {
     setSearchParams(next === "overview" ? {} : { tab: next });
   }
 
-  async function onPublish() {
-    if (!event) return;
+  async function onChangeStatus(status: string) {
+    if (!event || status === event.status) return;
     setActionError(null);
+    setChangingStatus(true);
     try {
-      await api.post(`/admin/events/${event.id}/publish`);
+      await api.patch(`/admin/events/${event.id}/status`, { status });
+      showToast("Event status updated.");
       reload();
     } catch (err) {
-      setActionError(err instanceof ApiRequestError ? err.apiError.message : "Failed to publish event.");
-    }
-  }
-
-  async function onCancelEvent() {
-    if (!event) return;
-    setActionError(null);
-    try {
-      await api.post(`/admin/events/${event.id}/cancel`);
-      reload();
-    } catch (err) {
-      setActionError(err instanceof ApiRequestError ? err.apiError.message : "Failed to cancel event.");
+      setActionError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update event status.");
+    } finally {
+      setChangingStatus(false);
     }
   }
 
@@ -213,10 +184,28 @@ export function EventWorkspacePage() {
 
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-xl">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-              <span className={`h-1.5 w-1.5 rounded-full ${isEventLive(event) ? "bg-status-red" : "bg-status-green"}`} />
-              {getEventDisplayStatus(event).replace(/_/g, " ")}
-            </span>
+            <div className="relative inline-flex items-center gap-1.5 rounded-full bg-white/15 pl-3 pr-6 py-1 text-xs font-semibold">
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isEventLive(event) ? "bg-status-red" : "bg-status-green"}`} />
+              <select
+                value={event.status}
+                disabled={changingStatus}
+                onChange={(e) => onChangeStatus(e.target.value)}
+                aria-label="Event status"
+                className="appearance-none bg-transparent text-xs font-semibold text-white outline-none disabled:opacity-60 [&>option]:text-ink"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {statusLabel(s)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon width={12} height={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+            </div>
+            {isEventLive(event) && (
+              <span className="ml-1.5 inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+                {getEventDisplayStatus(event)}
+              </span>
+            )}
             <h1 className="mt-3 text-2xl font-extrabold leading-tight sm:text-3xl">{event.title}</h1>
             {event.subtitle && <p className="mt-1.5 text-sm text-white/80">{event.subtitle}</p>}
 
@@ -271,7 +260,7 @@ export function EventWorkspacePage() {
                 <EyeIcon width={15} height={15} />
                 Preview Event
               </a>
-              <MoreMenu event={event} onPublish={onPublish} onCancelEvent={onCancelEvent} onDelete={onDelete} />
+              <MoreMenu event={event} onDelete={onDelete} />
             </div>
 
             {speaker && (

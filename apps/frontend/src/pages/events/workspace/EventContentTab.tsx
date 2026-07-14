@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AdminEventInput, EventDTO, LearningPointDTO } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
+import { useToastStore } from "../../../store/toastStore";
 import { FIELD_CLASS } from "./fieldStyles";
 
 export function EventContentTab({ event, onSaved }: { event: EventDTO; onSaved: () => void }) {
@@ -10,8 +11,8 @@ export function EventContentTab({ event, onSaved }: { event: EventDTO; onSaved: 
   const [presentationUrl, setPresentationUrl] = useState(event.presentationUrl ?? "");
   const [pastEvent, setPastEvent] = useState(event.displayConfig.pastEvent);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const showToast = useToastStore((s) => s.show);
 
   function addTakeaway() {
     setLearningPoints((prev) => [...prev, { icon: "check", title: "", description: "" }]);
@@ -35,7 +36,6 @@ export function EventContentTab({ event, onSaved }: { event: EventDTO; onSaved: 
 
   async function onSave() {
     setError(null);
-    setNotice(null);
     setSaving(true);
     try {
       const payload: Partial<AdminEventInput> = {
@@ -46,7 +46,7 @@ export function EventContentTab({ event, onSaved }: { event: EventDTO; onSaved: 
         displayConfig: { pastEvent },
       };
       await api.patch<EventDTO>(`/admin/events/${event.id}`, payload);
-      setNotice("Saved.");
+      showToast("Event content saved successfully.");
       onSaved();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to save event content.");
@@ -124,7 +124,6 @@ export function EventContentTab({ event, onSaved }: { event: EventDTO; onSaved: 
       </div>
 
       {error && <p className="text-sm font-medium text-status-red">{error}</p>}
-      {notice && <p className="text-sm font-medium text-status-green">{notice}</p>}
 
       <button
         onClick={onSave}

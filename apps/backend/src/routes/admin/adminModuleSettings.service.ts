@@ -1,8 +1,15 @@
 import type { Prisma } from "@prisma/client";
-import type { CertificateSettingsDTO, FeedbackSettingsDTO, SpeedDatingSettingsDTO } from "@repo/shared-types";
+import type {
+  CertificateSettingsDTO,
+  FeedbackSettingsDTO,
+  LoginCarouselSettingsDTO,
+  SpeedDatingSettingsDTO,
+} from "@repo/shared-types";
 import {
+  DEFAULT_ADMIN_LOGIN_CAROUSEL_SETTINGS,
   DEFAULT_CERTIFICATE_SETTINGS,
   DEFAULT_FEEDBACK_SETTINGS,
+  DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS,
   DEFAULT_SPEED_DATING_SETTINGS,
 } from "@repo/shared-types";
 import { prisma } from "../../db/client";
@@ -11,6 +18,8 @@ const KEYS = {
   speedDating: "speed_dating",
   feedback: "feedback",
   certificate: "certificate",
+  loginCarouselAdmin: "login_carousel_admin",
+  loginCarouselPortal: "login_carousel_portal",
 } as const;
 
 /** Reads a module settings row by key, falling back to a default when unset. */
@@ -55,4 +64,24 @@ export function setCertificateSettings(
   data: CertificateSettingsDTO,
 ): Promise<CertificateSettingsDTO> {
   return setModuleSettings(KEYS.certificate, data);
+}
+
+export function getAdminLoginCarousel(): Promise<LoginCarouselSettingsDTO> {
+  return getModuleSettings(KEYS.loginCarouselAdmin, DEFAULT_ADMIN_LOGIN_CAROUSEL_SETTINGS);
+}
+
+export function setAdminLoginCarousel(
+  data: LoginCarouselSettingsDTO,
+): Promise<LoginCarouselSettingsDTO> {
+  return setModuleSettings(KEYS.loginCarouselAdmin, data);
+}
+
+export function getPortalLoginCarousel(): Promise<LoginCarouselSettingsDTO> {
+  return getModuleSettings(KEYS.loginCarouselPortal, DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS);
+}
+
+export function setPortalLoginCarousel(
+  data: LoginCarouselSettingsDTO,
+): Promise<LoginCarouselSettingsDTO> {
+  return setModuleSettings(KEYS.loginCarouselPortal, data);
 }

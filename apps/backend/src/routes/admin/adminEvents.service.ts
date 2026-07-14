@@ -261,3 +261,26 @@ export async function cancelAdminEvent(id: string): Promise<EventDTO> {
   });
   return toEventDTO(event);
 }
+
+/**
+ * Manual override: sets status directly, skipping the publish/cancel lifecycle's
+ * own guardrails (required-fields check, etc.) since the admin is explicitly
+ * forcing a value rather than going through the guided action. Note that events
+ * past their endsAt are re-flipped to COMPLETED by the sweep (completeExpiredEvents,
+ * see events.service.ts) on the very next read, so forcing a truly-expired event
+ * back to PUBLISHED/REGISTRATION_CLOSED won't stick — that's the sweep's intended
+ * time-based behavior, not a bug in this override.
+ */
+export async function setAdminEventStatus(id: string, status: EventStatus): Promise<EventDTO> {
+  const existing = await prisma.event.findUnique({ where: { id } });
+  if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
+  const event = await prisma.event.update({
+    where: { id },
+    data: {
+      status,
+      publishedAt: status === EventStatus.PUBLISHED ? existing.publishedAt ?? new Date() : existing.publishedAt,
+    },
+    include: eventInclude,
+  });
+  return toEventDTO(event);
+}

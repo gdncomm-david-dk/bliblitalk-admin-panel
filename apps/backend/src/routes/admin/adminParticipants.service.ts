@@ -1,11 +1,13 @@
-import type { Registration, User } from "@prisma/client";
+import type { Feedback, Registration, User } from "@prisma/client";
 import { Attendance, RegistrationStatus } from "@repo/shared-types";
 import type { AdminRegistrationDTO } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 
+const registrationInclude = { user: true, feedback: true } as const;
+
 function toAdminRegistrationDTO(
-  r: Registration & { user: User },
+  r: Registration & { user: User; feedback: Feedback | null },
   certificateCode: string | null = null,
 ): AdminRegistrationDTO {
   return {
@@ -16,12 +18,14 @@ function toAdminRegistrationDTO(
     userAvatarUrl: r.user.avatarUrl,
     userDepartment: r.user.department,
     userPosition: r.user.position,
+    userYearsOfExperience: r.user.yearsOfExperience,
     status: r.status,
     attendance: r.attendance,
     createdAt: r.createdAt.toISOString(),
     shortlistedAt: r.shortlistedAt?.toISOString() ?? null,
     checkedInAt: r.checkedInAt?.toISOString() ?? null,
     certificateCode,
+    feedbackSubmitted: r.feedback !== null,
   };
 }
 
@@ -34,7 +38,7 @@ export async function listEventRegistrations(eventId: string): Promise<AdminRegi
   const [registrations, certificates] = await Promise.all([
     prisma.registration.findMany({
       where: { eventId },
-      include: { user: true },
+      include: registrationInclude,
       orderBy: { createdAt: "desc" },
     }),
     prisma.certificate.findMany({ where: { eventId } }),
@@ -71,7 +75,7 @@ async function transitionRegistration(
   const updated = await prisma.registration.update({
     where: { id: registrationId },
     data: { status: to, ...extra },
-    include: { user: true },
+    include: registrationInclude,
   });
   return toAdminRegistrationDTO(updated, await findCertificateCode(updated.userId, updated.eventId));
 }
@@ -121,7 +125,7 @@ async function setAttendance(id: string, attendance: Attendance): Promise<AdminR
       attendance,
       checkedInAt: attendance === Attendance.PRESENT ? new Date() : existing.checkedInAt,
     },
-    include: { user: true },
+    include: registrationInclude,
   });
   return toAdminRegistrationDTO(updated, await findCertificateCode(updated.userId, updated.eventId));
 }

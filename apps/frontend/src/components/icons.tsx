@@ -228,3 +228,10 @@ export const SidebarIcon = (p: IconProps) => (
     <path d="M9 4v16" />
   </svg>
 );
+
+export const ShieldIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z" />
+    <path d="m9.5 12 1.8 1.8L14.5 10" />
+  </svg>
+);

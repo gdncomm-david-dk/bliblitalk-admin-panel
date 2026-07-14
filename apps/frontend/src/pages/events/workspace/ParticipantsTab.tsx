@@ -15,15 +15,28 @@ import {
 } from "../../../components/icons";
 
 function downloadCsv(rows: AdminRegistrationDTO[]) {
-  const header = ["Name", "Email", "Company", "Job Title", "Status", "Attendance", "Registered", "Certificate"];
+  const header = [
+    "Name",
+    "Email",
+    "Company",
+    "Job Title",
+    "YoE",
+    "Status",
+    "Attendance",
+    "Feedback",
+    "Registered",
+    "Certificate",
+  ];
   const lines = rows.map((r) =>
     [
       r.userName,
       r.userEmail,
       r.userDepartment ?? "",
       r.userPosition ?? "",
+      r.userYearsOfExperience ?? "",
       r.status,
       r.attendance,
+      r.feedbackSubmitted ? "Yes" : "No",
       dayjs(r.createdAt).format("YYYY-MM-DD"),
       r.certificateCode ?? "",
     ]
@@ -77,7 +90,7 @@ function RowMenu({ onReject, onEmail }: { onReject: () => void; onEmail: () => v
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="More actions"
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-surface hover:text-ink"
       >
         <MoreVerticalIcon width={16} height={16} />
       </button>
@@ -361,23 +374,25 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
                   <th className="px-4 py-3">Participant</th>
                   <th className="px-4 py-3">Company</th>
                   <th className="px-4 py-3">Job Title</th>
+                  <th className="px-4 py-3">YoE</th>
                   <th className="px-4 py-3">Register Date</th>
                   <th className="px-4 py-3">Shortlisted</th>
                   <th className="px-4 py-3">Attendance</th>
+                  <th className="px-4 py-3">Feedback</th>
                   <th className="px-4 py-3">Certificate</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="min-w-[140px] px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {registrations === null ? (
                   <tr>
-                    <td className="px-4 py-6 text-muted" colSpan={9}>
+                    <td className="px-4 py-6 text-muted" colSpan={11}>
                       Loading registrations…
                     </td>
                   </tr>
                 ) : pageRows.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-muted" colSpan={9}>
+                    <td className="px-4 py-6 text-muted" colSpan={11}>
                       No participants match these filters.
                     </td>
                   </tr>
@@ -410,6 +425,7 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
                         </td>
                         <td className="px-4 py-3 text-muted">{r.userDepartment ?? "—"}</td>
                         <td className="px-4 py-3 text-muted">{r.userPosition ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted">{r.userYearsOfExperience ?? "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3">
                           <p className="text-ink">{dayjs(r.createdAt).format("D MMM YYYY")}</p>
                           <p className="text-xs text-muted">{dayjs(r.createdAt).format("hh:mm A")}</p>
@@ -462,6 +478,18 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
                             </button>
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {r.feedbackSubmitted ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-status-green">
+                              <CheckIcon width={12} height={12} />
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md bg-surface px-2 py-1 text-xs font-semibold text-muted">
+                              No
+                            </span>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3">
                           {r.certificateCode ? (
                             <span className="text-xs font-semibold text-status-green">
@@ -473,12 +501,12 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex h-8 items-center justify-end gap-1.5">
                             <button
                               onClick={() => setViewing(r)}
-                              className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                             >
-                              <EyeIcon width={14} height={14} /> View
+                              <EyeIcon width={16} height={16} /> View
                             </button>
                             {!locked(r) && (
                               <RowMenu onReject={() => act(r.id, "reject")} onEmail={() => (window.location.href = `mailto:${r.userEmail}`)} />
@@ -679,8 +707,10 @@ function ParticipantModal({
         <dl className="space-y-2.5 px-5 py-4 text-sm">
           <ModalRow label="Company" value={r.userDepartment ?? "—"} />
           <ModalRow label="Job Title" value={r.userPosition ?? "—"} />
+          <ModalRow label="YoE" value={r.userYearsOfExperience ?? "—"} />
           <ModalRow label="Status" value={r.status.charAt(0) + r.status.slice(1).toLowerCase()} />
           <ModalRow label="Attendance" value={r.attendance.charAt(0) + r.attendance.slice(1).toLowerCase()} />
+          <ModalRow label="Feedback" value={r.feedbackSubmitted ? "Yes" : "No"} />
           <ModalRow label="Registered" value={dayjs(r.createdAt).format("D MMM YYYY, hh:mm A")} />
           <ModalRow label="Certificate" value={r.certificateCode ? `#${r.certificateCode}` : "—"} />
         </dl>

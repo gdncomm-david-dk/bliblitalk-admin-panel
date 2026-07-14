@@ -1,14 +1,23 @@
 import { Router } from "express";
 import { Permission } from "@repo/auth";
-import { CertificateSettingsDTO, FeedbackSettingsDTO, SpeedDatingSettingsDTO } from "@repo/shared-types";
+import {
+  CertificateSettingsDTO,
+  FeedbackSettingsDTO,
+  LoginCarouselSettingsDTO,
+  SpeedDatingSettingsDTO,
+} from "@repo/shared-types";
 import { requireAuth, requirePermission } from "../../middleware/requireAuth";
 import { validate } from "../../middleware/validate";
 import {
+  getAdminLoginCarousel,
   getCertificateSettings,
   getFeedbackSettings,
+  getPortalLoginCarousel,
   getSpeedDatingSettings,
+  setAdminLoginCarousel,
   setCertificateSettings,
   setFeedbackSettings,
+  setPortalLoginCarousel,
   setSpeedDatingSettings,
 } from "./adminModuleSettings.service";
 
@@ -95,6 +104,64 @@ adminModuleSettingsRoutes.put(
   async (req, res, next) => {
     try {
       res.json(await setCertificateSettings(req.body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /admin/settings/login-carousel-admin
+adminModuleSettingsRoutes.get(
+  "/settings/login-carousel-admin",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  async (_req, res, next) => {
+    try {
+      res.json(await getAdminLoginCarousel());
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// PUT /admin/settings/login-carousel-admin
+adminModuleSettingsRoutes.put(
+  "/settings/login-carousel-admin",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  validate(LoginCarouselSettingsDTO),
+  async (req, res, next) => {
+    try {
+      res.json(await setAdminLoginCarousel(req.body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /admin/settings/login-carousel-portal
+adminModuleSettingsRoutes.get(
+  "/settings/login-carousel-portal",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  async (_req, res, next) => {
+    try {
+      res.json(await getPortalLoginCarousel());
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// PUT /admin/settings/login-carousel-portal
+adminModuleSettingsRoutes.put(
+  "/settings/login-carousel-portal",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  validate(LoginCarouselSettingsDTO),
+  async (req, res, next) => {
+    try {
+      res.json(await setPortalLoginCarousel(req.body));
     } catch (err) {
       next(err);
     }
