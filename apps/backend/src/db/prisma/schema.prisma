@@ -153,6 +153,11 @@ model Event {
   // Users who administer this event (EVENT_ADMIN scope).
   admins               User[]         @relation("EventAdmins")
   reminders            EventReminder[]
+
+  @@index([status, registrationOpensAt])
+  @@index([status, registrationDeadline])
+  @@index([status, startsAt])
+  @@index([status, endsAt])
 }
 
 model Registration {
@@ -171,6 +176,7 @@ model Registration {
   createdAt     DateTime                 @default(now())
 
   @@unique([userId, eventId])
+  @@index([eventId, status])
 }
 
 model SpeedDatingRegistration {
