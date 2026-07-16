@@ -76,4 +76,19 @@ describe("transitionEvent", () => {
       transitionEvent("does-not-exist", EventStatus.PUBLISHED, { type: "SYSTEM" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
+
+  it("is idempotent: same-status transition is a no-op (no write, no history)", async () => {
+    const ev = await makeEvent(EventStatus.DRAFT);
+    const statusBefore = ev.status;
+    const changedAtBefore = ev.statusChangedAt;
+
+    await transitionEvent(ev.id, EventStatus.DRAFT, { type: "SYSTEM" });
+
+    const after = await prisma.event.findUnique({ where: { id: ev.id } });
+    expect(after?.status).toBe(statusBefore);
+    expect(after?.statusChangedAt.getTime()).toBe(changedAtBefore.getTime());
+
+    const historyCount = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
+    expect(historyCount).toBe(0);
+  });
 });

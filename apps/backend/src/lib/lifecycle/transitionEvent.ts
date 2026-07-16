@@ -25,7 +25,7 @@ export async function transitionEvent(
   });
   if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
 
-  const from = event.status as EventStatus;
+  const from = event.status;
   if (from === to) return; // idempotent no-op — scheduler may re-evaluate a boundary
 
   if (!canTransition(from, to)) {
