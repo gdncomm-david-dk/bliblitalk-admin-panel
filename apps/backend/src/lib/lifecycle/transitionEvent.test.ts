@@ -91,4 +91,72 @@ describe("transitionEvent", () => {
     const historyCount = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
     expect(historyCount).toBe(0);
   });
+
+  it("resolves a concurrent race for the same target with exactly one history row (CAS)", async () => {
+    const ev = await makeEvent(EventStatus.DRAFT);
+    const results = await Promise.allSettled([
+      transitionEvent(ev.id, EventStatus.PUBLISHED, { type: "SYSTEM" }),
+      transitionEvent(ev.id, EventStatus.PUBLISHED, { type: "ADMIN", id: "admin-1" }),
+    ]);
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1].status).toBe("fulfilled");
+
+    const after = await prisma.event.findUnique({ where: { id: ev.id } });
+    expect(after?.status).toBe(EventStatus.PUBLISHED);
+
+    const history = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
+    expect(history).toBe(1);
+  });
+
+  it("gives the losing racer an honest 409 when a concurrent call reached a different target", async () => {
+    const ev = await makeEvent(EventStatus.ONGOING);
+    const results = await Promise.allSettled([
+      transitionEvent(ev.id, EventStatus.COMPLETED, { type: "SYSTEM" }),
+      transitionEvent(ev.id, EventStatus.CANCELLED, { type: "ADMIN", id: "admin-1" }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toMatchObject({ code: "INVALID_TRANSITION", status: 409 });
+
+    const history = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
+    expect(history).toBe(1);
+  });
+
+  it("runs COMPLETED side effects: clears isOverdue and flips displayConfig.pastEvent", async () => {
+    const ev = await prisma.event.create({
+      data: {
+        slug: `${PREFIX}${Date.now()}-completed-fx`,
+        title: "Lifecycle txn test",
+        description: "x",
+        category: "Technology",
+        location: "Online",
+        startsAt: new Date(Date.now() - 200000),
+        endsAt: new Date(Date.now() - 100000),
+        status: EventStatus.ONGOING,
+        isOverdue: true,
+        displayConfig: {
+          pastEvent: false,
+          speaker: true,
+          gallery: true,
+          keyTakeaways: true,
+          recording: true,
+          certificate: true,
+        },
+      },
+    });
+
+    await transitionEvent(ev.id, EventStatus.COMPLETED, { type: "SYSTEM" });
+
+    const after = await prisma.event.findUnique({ where: { id: ev.id } });
+    expect(after?.status).toBe(EventStatus.COMPLETED);
+    expect(after?.isOverdue).toBe(false);
+    expect((after?.displayConfig as Record<string, unknown>).pastEvent).toBe(true);
+    expect((after?.displayConfig as Record<string, unknown>).speaker).toBe(true);
+
+    const history = await prisma.eventStatusHistory.findFirst({ where: { eventId: ev.id } });
+    expect(history?.sideEffectsStatus).toBe("DONE");
+  });
 });
