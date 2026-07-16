@@ -9,7 +9,7 @@ import type {
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
-import { completeExpiredEvents, eventInclude } from "../public/events/events.service";
+import { eventInclude } from "../public/events/events.service";
 import { toEventDTO } from "../../lib/shared/mappers";
 import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 
@@ -51,7 +51,6 @@ export async function listAdminEvents(
   role: Role,
   status?: EventStatus,
 ): Promise<EventDTO[]> {
-  await completeExpiredEvents();
   const where = {
     ...(isEventScoped(role) ? { admins: { some: { id: userId } } } : {}),
     ...(status ? { status } : {}),
@@ -65,7 +64,6 @@ export async function listAdminEvents(
 }
 
 export async function getAdminEvent(id: string): Promise<EventDTO> {
-  await completeExpiredEvents();
   const event = await prisma.event.findUnique({ where: { id }, include: eventInclude });
   if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
   return toEventDTO(event);
@@ -263,11 +261,10 @@ export async function cancelAdminEvent(id: string, actorId: string): Promise<Eve
  * Manual override: forces status to any value the admin picks, skipping the guided
  * actions' own domain checks (e.g. publish's required-fields check) — but, like every
  * other status write, it is validated against the transition table by transitionEvent,
- * which throws 409 INVALID_TRANSITION for an illegal jump. Note that events past their
- * endsAt are re-flipped to COMPLETED by the sweep (completeExpiredEvents, see
- * events.service.ts) on the very next read, so forcing a truly-expired event back to
- * PUBLISHED/REGISTRATION_CLOSED won't stick — that's the sweep's intended time-based
- * behavior, not a bug in this override.
+ * which throws 409 INVALID_TRANSITION for an illegal jump. Note that a truly-expired
+ * event forced back to an earlier status (e.g. PUBLISHED) will be walked forward again
+ * by the sweepEventLifecycle scheduler within its next 60s tick — that's the scheduler's
+ * intended time-based behavior, not a bug in this override.
  */
 export async function setAdminEventStatus(
   id: string,

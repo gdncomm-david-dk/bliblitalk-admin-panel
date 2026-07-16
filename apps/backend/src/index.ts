@@ -4,25 +4,23 @@ import express from "express";
 import { createApp } from "./app";
 import { config } from "./config";
 import { logger } from "./logger";
-import { completeExpiredEvents } from "./routes/public/events/events.service";
 import { sweepDueReminders } from "./routes/admin/adminReminders.service";
+import { sweepEventLifecycle } from "./lib/lifecycle/sweepEventLifecycle";
 
 const app = createApp();
-
-// Belt-and-suspenders sweep for read paths (admin dashboard/analytics) that query
-// events directly instead of going through listEvents/getEventBySlug/etc.
-function sweepExpiredEvents() {
-  completeExpiredEvents().catch((err) => logger.error({ err }, "Failed to sweep expired events"));
-}
 
 function sweepReminders() {
   sweepDueReminders().catch((err) => logger.error({ err }, "Failed to sweep due reminders"));
 }
 
-sweepExpiredEvents();
+function sweepLifecycle() {
+  sweepEventLifecycle().catch((err) => logger.error({ err }, "Failed to sweep event lifecycle"));
+}
+
 sweepReminders();
-setInterval(sweepExpiredEvents, 5 * 60 * 1000);
+sweepLifecycle();
 setInterval(sweepReminders, 60 * 1000);
+setInterval(sweepLifecycle, 60 * 1000);
 
 // In production, serve the built admin FE (single fullstack container).
 if (config.isProd) {
