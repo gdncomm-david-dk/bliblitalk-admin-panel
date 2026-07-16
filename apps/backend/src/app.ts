@@ -26,6 +26,7 @@ import { adminSiteSettingsRoutes } from "./routes/admin/adminSiteSettings.routes
 import { adminUsersRoutes } from "./routes/admin/adminUsers.routes";
 import { adminMarketingRoutes } from "./routes/admin/adminMarketing.routes";
 import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
+import { adminSpeakersRoutes } from "./routes/admin/adminSpeakers.routes";
 
 export function createApp() {
   const app = express();
@@ -78,6 +79,7 @@ export function createApp() {
   app.use("/api/admin", adminUsersRoutes);
   app.use("/api/admin", adminMarketingRoutes);
   app.use("/api/admin", adminRemindersRoutes);
+  app.use("/api/admin", adminSpeakersRoutes);
 
   app.use(errorHandler);
   return app;
