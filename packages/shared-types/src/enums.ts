@@ -21,11 +21,20 @@ export type RegistrationStatus = (typeof RegistrationStatus)[keyof typeof Regist
 export const EventStatus = {
   DRAFT: "DRAFT",
   PUBLISHED: "PUBLISHED",
+  REGISTRATION_OPEN: "REGISTRATION_OPEN",
   REGISTRATION_CLOSED: "REGISTRATION_CLOSED",
+  ONGOING: "ONGOING",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED",
+  ARCHIVED: "ARCHIVED",
 } as const;
 export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
+
+export const SelectionMode = {
+  FCFS: "FCFS",
+  CURATED: "CURATED",
+} as const;
+export type SelectionMode = (typeof SelectionMode)[keyof typeof SelectionMode];
 
 export const Attendance = {
   PRESENT: "PRESENT",
