@@ -110,23 +110,31 @@ describe("transitionEvent", () => {
 
   it("gives the losing racer an honest 409 when a concurrent call reached a different target", async () => {
     const ev = await makeEvent(EventStatus.ONGOING);
+    const targets = [EventStatus.COMPLETED, EventStatus.CANCELLED];
     const results = await Promise.allSettled([
-      transitionEvent(ev.id, EventStatus.COMPLETED, { type: "SYSTEM" }),
-      transitionEvent(ev.id, EventStatus.CANCELLED, { type: "ADMIN", id: "admin-1" }),
+      transitionEvent(ev.id, targets[0], { type: "SYSTEM" }),
+      transitionEvent(ev.id, targets[1], { type: "ADMIN", id: "admin-1" }),
     ]);
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    // The loser's error must reflect the REAL post-race status (COMPLETED, the winner's
-    // target), not the stale ONGOING it originally read — a stale `from` here would mean
-    // the reported `allowed` list is wrong too (it would wrongly include CANCELLED, the
-    // very target this call just got rejected for).
-    expect(rejected[0]!.reason).toMatchObject({
+    // Either call may win the CAS race — there's no fixed ordering between two
+    // concurrently-launched calls racing the same row, so don't assume which one does.
+    const winnerIndex = results.findIndex((r) => r.status === "fulfilled");
+    const loserIndex = results.findIndex((r) => r.status === "rejected");
+    expect(winnerIndex).not.toBe(-1);
+    expect(loserIndex).not.toBe(-1);
+
+    const after = await prisma.event.findUnique({ where: { id: ev.id } });
+    expect(after?.status).toBe(targets[winnerIndex]);
+
+    // The loser's error must reflect the REAL post-race status (the winner's target),
+    // not the stale ONGOING it originally read — a stale `from` here would mean the
+    // reported `allowed` list is wrong too (it would wrongly include the loser's own
+    // target, since ONGOING allows both COMPLETED and CANCELLED).
+    const loser = results[loserIndex] as PromiseRejectedResult;
+    expect(loser.reason).toMatchObject({
       code: "INVALID_TRANSITION",
       status: 409,
-      details: { from: EventStatus.COMPLETED, to: EventStatus.CANCELLED, allowed: [EventStatus.ARCHIVED] },
+      details: { from: targets[winnerIndex], to: targets[loserIndex], allowed: [EventStatus.ARCHIVED] },
     });
 
     const history = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
