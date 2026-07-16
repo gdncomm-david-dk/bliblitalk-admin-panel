@@ -177,4 +177,25 @@ describe("admin events CRUD", () => {
     const res = await eventAgent.get(`/api/admin/events/${notAssigned.id}`);
     expect(res.status).toBe(403);
   });
+
+  it("attaches and replaces speakers via speakerIds", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const s1 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-1` });
+    const s2 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-2` });
+
+    const created = await agent
+      .post("/api/admin/events")
+      .send(validPayload({ slug: `${TEST_SLUG_PREFIX}with-speakers`, speakerIds: [s1.body.id] }));
+    expect(created.status).toBe(201);
+    expect(created.body.speakers.map((s: { id: string }) => s.id)).toEqual([s1.body.id]);
+
+    // Full-replace: s2 in, s1 out.
+    const patched = await agent
+      .patch(`/api/admin/events/${created.body.id}`)
+      .send({ speakerIds: [s2.body.id] });
+    expect(patched.status).toBe(200);
+    expect(patched.body.speakers.map((s: { id: string }) => s.id)).toEqual([s2.body.id]);
+
+    await prisma.speaker.deleteMany({ where: { name: { startsWith: TEST_SLUG_PREFIX } } });
+  });
 });
