@@ -8,8 +8,6 @@ import {
 import { prisma } from "../../../db/client";
 import { AppError } from "../../../middleware/error";
 import { toMyEventDTO } from "../../../lib/shared/mappers";
-import { transitionEvent } from "../../../lib/lifecycle/transitionEvent";
-import { logger } from "../../../logger";
 
 // seatsTaken only counts confirmed seats — WAITING/CANCELLED/REJECTED don't occupy capacity.
 export const eventInclude = {
@@ -40,31 +38,21 @@ const COMPLETION_GRACE_MS = 2 * 60 * 1000;
  * them out by hand. Called at every event read boundary (portal + admin) plus a
  * periodic background sweep in index.ts for paths that query events directly.
  *
- * The status write goes through transitionEvent (the sole writer of event.status) so
- * the sweep is subject to the same transition table + history audit trail as every
- * other write. Each row's transition is wrapped in try/catch so one bad row can't
- * abort the sweep for the rest. The displayConfig.pastEvent flip is a separate,
- * non-status update, done individually (rather than one updateMany) so each event's
+ * Also flips displayConfig.pastEvent on, marking the event for the portal's Past
+ * Event page. Each row is updated individually (rather than one updateMany) so its
  * other displayConfig flags — which vary per event — aren't clobbered.
  *
- * Known P1 limitation (deferred to the P2 scheduler): the transition table only
- * allows a single-hop ONGOING -> COMPLETED, so an event whose end time passed while
- * still PUBLISHED/REGISTRATION_OPEN/REGISTRATION_CLOSED (i.e. it never went ONGOING)
- * will 409 here, get logged, and stay put rather than being force-completed. P1 has
- * no real time-based auto-transition scheduler yet (that's P2); this sweep is a
- * coarse safety net for the common ONGOING -> COMPLETED case only.
+ * NOTE (P1 scoping): this time-based sweep intentionally writes status directly
+ * rather than through transitionEvent. The transition table only permits a
+ * single-hop ONGOING -> COMPLETED, but no P1 code drives events to ONGOING yet, so
+ * routing the sweep through the engine would stop it completing past-due events.
+ * The P2 scheduler replaces this sweep with a proper multi-hop, history-audited
+ * time engine; until then this remains the one legacy direct status writer.
  */
 export async function completeExpiredEvents(): Promise<void> {
   const expiring = await prisma.event.findMany({
     where: {
-      status: {
-        in: [
-          EventStatus.PUBLISHED,
-          EventStatus.REGISTRATION_OPEN,
-          EventStatus.REGISTRATION_CLOSED,
-          EventStatus.ONGOING,
-        ],
-      },
+      status: { in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED] },
       endsAt: { lt: new Date(Date.now() - COMPLETION_GRACE_MS) },
     },
     select: { id: true, displayConfig: true },
@@ -72,19 +60,15 @@ export async function completeExpiredEvents(): Promise<void> {
   if (expiring.length === 0) return;
 
   await Promise.all(
-    expiring.map(async (event) => {
-      try {
-        await transitionEvent(event.id, EventStatus.COMPLETED, { type: "SYSTEM" });
-        await prisma.event.update({
-          where: { id: event.id },
-          data: {
-            displayConfig: { ...(event.displayConfig as EventDisplayConfig), pastEvent: true },
-          },
-        });
-      } catch (err) {
-        logger.error({ err, eventId: event.id }, "completeExpiredEvents: failed to complete event");
-      }
-    }),
+    expiring.map((event) =>
+      prisma.event.update({
+        where: { id: event.id },
+        data: {
+          status: EventStatus.COMPLETED,
+          displayConfig: { ...(event.displayConfig as EventDisplayConfig), pastEvent: true },
+        },
+      }),
+    ),
   );
 }
 
