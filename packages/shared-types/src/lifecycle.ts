@@ -1,4 +1,4 @@
-import { EventStatus } from "@repo/shared-types";
+import { EventStatus } from "./enums";
 
 /**
  * Single source of truth for legal event-status transitions (PRD §2.2).

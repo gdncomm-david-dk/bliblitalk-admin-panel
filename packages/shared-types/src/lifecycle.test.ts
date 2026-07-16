@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { EventStatus } from "@repo/shared-types";
-import { canTransition, allowedFrom, ALLOWED_TRANSITIONS } from "./transitions";
+import { EventStatus } from "./enums";
+import { canTransition, allowedFrom, ALLOWED_TRANSITIONS } from "./lifecycle";
 
 describe("event lifecycle transition table", () => {
   it("allows the core happy-path transitions", () => {

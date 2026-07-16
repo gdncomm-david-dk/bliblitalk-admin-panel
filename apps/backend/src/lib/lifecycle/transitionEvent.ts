@@ -1,9 +1,8 @@
-import { EventStatus } from "@repo/shared-types";
+import { EventStatus, allowedFrom, canTransition } from "@repo/shared-types";
 import type { EventDisplayConfig } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 import { logger } from "../../logger";
-import { allowedFrom, canTransition } from "./transitions";
 
 export type TransitionActor = { type: "ADMIN"; id: string } | { type: "SYSTEM" };
 
