@@ -10,6 +10,7 @@ export function SpeakersPage() {
   const [speakers, setSpeakers] = useState<AdminSpeakerDTO[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ open: boolean; speaker: AdminSpeakerDTO | null }>({
     open: false,
     speaker: null,
@@ -18,8 +19,11 @@ export function SpeakersPage() {
 
   async function load() {
     setLoading(true);
+    setError(null);
     try {
       setSpeakers(await api.get<AdminSpeakerDTO[]>("/admin/speakers"));
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to load speakers.");
     } finally {
       setLoading(false);
     }
@@ -75,6 +79,8 @@ export function SpeakersPage() {
           className={`${FIELD_CLASS} pl-9`}
         />
       </div>
+
+      {error && <p className="mt-4 text-sm font-medium text-status-red">{error}</p>}
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-white">
         <table className="w-full text-left text-sm">
