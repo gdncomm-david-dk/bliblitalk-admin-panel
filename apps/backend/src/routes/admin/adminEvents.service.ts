@@ -11,6 +11,7 @@ import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 import { completeExpiredEvents, eventInclude } from "../public/events/events.service";
 import { toEventDTO } from "../../lib/shared/mappers";
+import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 
 function mergeDisplayConfig(
   existing: unknown,
@@ -98,6 +99,8 @@ export async function createAdminEvent(
       venue: input.venue ?? null,
       mapsUrl: input.mapsUrl ?? null,
       registrationDeadline: input.registrationDeadline ? new Date(input.registrationDeadline) : null,
+      selectionMode: input.selectionMode,
+      registrationOpensAt: input.registrationOpensAt ? new Date(input.registrationOpensAt) : null,
       eventType: input.eventType ?? null,
       dressCode: input.dressCode ?? null,
       language: input.language ?? null,
@@ -159,6 +162,10 @@ export async function updateAdminEvent(
       ...(input.registrationDeadline !== undefined && {
         registrationDeadline: input.registrationDeadline ? new Date(input.registrationDeadline) : null,
       }),
+      ...(input.selectionMode !== undefined && { selectionMode: input.selectionMode }),
+      ...(input.registrationOpensAt !== undefined && {
+        registrationOpensAt: input.registrationOpensAt ? new Date(input.registrationOpensAt) : null,
+      }),
       ...(input.eventType !== undefined && { eventType: input.eventType }),
       ...(input.dressCode !== undefined && { dressCode: input.dressCode }),
       ...(input.language !== undefined && { language: input.language }),
@@ -206,87 +213,68 @@ const REQUIRED_FOR_PUBLISH: (keyof AdminEventInput)[] = [
   "endsAt",
 ];
 
-export async function publishAdminEvent(id: string): Promise<EventDTO> {
+/** Sets publishedAt the first time an event reaches PUBLISHED. Not a status write, so it's fine outside the engine. */
+async function ensurePublishedAt(id: string, to: EventStatus): Promise<void> {
+  if (to !== EventStatus.PUBLISHED) return;
+  const existing = await prisma.event.findUnique({ where: { id }, select: { publishedAt: true } });
+  if (existing && existing.publishedAt === null) {
+    await prisma.event.update({ where: { id }, data: { publishedAt: new Date() } });
+  }
+}
+
+export async function publishAdminEvent(id: string, actorId: string): Promise<EventDTO> {
   const existing = await prisma.event.findUnique({ where: { id } });
   if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (existing.status !== EventStatus.DRAFT) {
-    throw new AppError("INVALID_TRANSITION", "Only draft events can be published", 400);
-  }
   const missing = REQUIRED_FOR_PUBLISH.filter((field) => !existing[field as keyof typeof existing]);
   if (missing.length > 0) {
     throw new AppError("INCOMPLETE_EVENT", `Missing required fields: ${missing.join(", ")}`, 422);
   }
-  const event = await prisma.event.update({
-    where: { id },
-    data: { status: EventStatus.PUBLISHED, publishedAt: new Date() },
-    include: eventInclude,
-  });
-  return toEventDTO(event);
-}
-
-/** Closes registration on a live event without cancelling it (PUBLISHED -> REGISTRATION_CLOSED). */
-export async function closeAdminEventRegistration(id: string): Promise<EventDTO> {
-  const existing = await prisma.event.findUnique({ where: { id } });
-  if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (existing.status !== EventStatus.PUBLISHED) {
-    throw new AppError("INVALID_TRANSITION", "Only published events can close registration", 400);
-  }
-  const event = await prisma.event.update({
-    where: { id },
-    data: { status: EventStatus.REGISTRATION_CLOSED },
-    include: eventInclude,
-  });
-  return toEventDTO(event);
-}
-
-/** Reopens registration on an event whose registration was closed. */
-export async function openAdminEventRegistration(id: string): Promise<EventDTO> {
-  const existing = await prisma.event.findUnique({ where: { id } });
-  if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (existing.status !== EventStatus.REGISTRATION_CLOSED) {
-    throw new AppError("INVALID_TRANSITION", "Only events with closed registration can reopen", 400);
-  }
-  const event = await prisma.event.update({
-    where: { id },
-    data: { status: EventStatus.PUBLISHED },
-    include: eventInclude,
-  });
-  return toEventDTO(event);
-}
-
-export async function cancelAdminEvent(id: string): Promise<EventDTO> {
-  const existing = await prisma.event.findUnique({ where: { id } });
-  if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (existing.status === EventStatus.CANCELLED) {
-    throw new AppError("INVALID_TRANSITION", "Event is already cancelled", 400);
-  }
-  const event = await prisma.event.update({
-    where: { id },
-    data: { status: EventStatus.CANCELLED },
-    include: eventInclude,
-  });
-  return toEventDTO(event);
+  await transitionEvent(id, EventStatus.PUBLISHED, { type: "ADMIN", id: actorId });
+  await ensurePublishedAt(id, EventStatus.PUBLISHED);
+  return getAdminEvent(id);
 }
 
 /**
- * Manual override: sets status directly, skipping the publish/cancel lifecycle's
- * own guardrails (required-fields check, etc.) since the admin is explicitly
- * forcing a value rather than going through the guided action. Note that events
- * past their endsAt are re-flipped to COMPLETED by the sweep (completeExpiredEvents,
- * see events.service.ts) on the very next read, so forcing a truly-expired event
- * back to PUBLISHED/REGISTRATION_CLOSED won't stick — that's the sweep's intended
- * time-based behavior, not a bug in this override.
+ * Closes registration on a live event without cancelling it (REGISTRATION_OPEN ->
+ * REGISTRATION_CLOSED per the transition table). transitionEvent enforces legality —
+ * no hand-rolled status guard needed here.
  */
-export async function setAdminEventStatus(id: string, status: EventStatus): Promise<EventDTO> {
-  const existing = await prisma.event.findUnique({ where: { id } });
-  if (!existing) throw new AppError("NOT_FOUND", "Event not found", 404);
-  const event = await prisma.event.update({
-    where: { id },
-    data: {
-      status,
-      publishedAt: status === EventStatus.PUBLISHED ? existing.publishedAt ?? new Date() : existing.publishedAt,
-    },
-    include: eventInclude,
-  });
-  return toEventDTO(event);
+export async function closeAdminEventRegistration(id: string, actorId: string): Promise<EventDTO> {
+  await transitionEvent(id, EventStatus.REGISTRATION_CLOSED, { type: "ADMIN", id: actorId });
+  return getAdminEvent(id);
+}
+
+/**
+ * Opens (or reopens) registration (PUBLISHED -> REGISTRATION_OPEN, or the "manual
+ * reopen" REGISTRATION_CLOSED -> REGISTRATION_OPEN — both legal per the transition
+ * table). transitionEvent enforces legality — no hand-rolled status guard needed here.
+ */
+export async function openAdminEventRegistration(id: string, actorId: string): Promise<EventDTO> {
+  await transitionEvent(id, EventStatus.REGISTRATION_OPEN, { type: "ADMIN", id: actorId });
+  return getAdminEvent(id);
+}
+
+export async function cancelAdminEvent(id: string, actorId: string): Promise<EventDTO> {
+  await transitionEvent(id, EventStatus.CANCELLED, { type: "ADMIN", id: actorId });
+  return getAdminEvent(id);
+}
+
+/**
+ * Manual override: forces status to any value the admin picks, skipping the guided
+ * actions' own domain checks (e.g. publish's required-fields check) — but, like every
+ * other status write, it is validated against the transition table by transitionEvent,
+ * which throws 409 INVALID_TRANSITION for an illegal jump. Note that events past their
+ * endsAt are re-flipped to COMPLETED by the sweep (completeExpiredEvents, see
+ * events.service.ts) on the very next read, so forcing a truly-expired event back to
+ * PUBLISHED/REGISTRATION_CLOSED won't stick — that's the sweep's intended time-based
+ * behavior, not a bug in this override.
+ */
+export async function setAdminEventStatus(
+  id: string,
+  status: EventStatus,
+  actorId: string,
+): Promise<EventDTO> {
+  await transitionEvent(id, status, { type: "ADMIN", id: actorId });
+  await ensurePublishedAt(id, status);
+  return getAdminEvent(id);
 }

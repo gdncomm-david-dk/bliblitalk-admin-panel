@@ -3,7 +3,11 @@ import { EventStatus, RegistrationStatus, Attendance } from "@repo/shared-types"
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 
-const UPCOMING_STATUSES: EventStatus[] = [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED];
+const UPCOMING_STATUSES: EventStatus[] = [
+  EventStatus.PUBLISHED,
+  EventStatus.REGISTRATION_OPEN,
+  EventStatus.REGISTRATION_CLOSED,
+];
 
 /**
  * Assembles the Admin CMS dashboard payload. EVENT_ADMIN is scoped to the events

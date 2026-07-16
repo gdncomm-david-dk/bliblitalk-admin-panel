@@ -15,15 +15,20 @@ export const eventInclude = {
   _count: { select: { registrations: { where: { status: RegistrationStatus.REGISTERED } } } },
 } as const;
 
-// The portal never sees DRAFT or CANCELLED events.
+// The portal never sees DRAFT or CANCELLED events. REGISTRATION_OPEN and ONGOING are
+// the new live states (reachable in P1 via the open-registration action and the manual
+// /transition endpoint); they must stay visible so live events don't vanish.
 const PORTAL_VISIBLE: EventStatus[] = [
   EventStatus.PUBLISHED,
+  EventStatus.REGISTRATION_OPEN,
   EventStatus.REGISTRATION_CLOSED,
+  EventStatus.ONGOING,
   EventStatus.COMPLETED,
 ];
 
 function portalStatusWhere(filter?: PortalEventFilter): EventStatus[] {
-  if (filter === "upcoming") return [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED];
+  if (filter === "upcoming")
+    return [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED];
   if (filter === "completed") return [EventStatus.COMPLETED];
   return PORTAL_VISIBLE;
 }
@@ -41,11 +46,25 @@ const COMPLETION_GRACE_MS = 2 * 60 * 1000;
  * Also flips displayConfig.pastEvent on, marking the event for the portal's Past
  * Event page. Each row is updated individually (rather than one updateMany) so its
  * other displayConfig flags — which vary per event — aren't clobbered.
+ *
+ * NOTE (P1 scoping): this time-based sweep intentionally writes status directly
+ * rather than through transitionEvent. The transition table only permits a
+ * single-hop ONGOING -> COMPLETED, but no P1 code drives events to ONGOING yet, so
+ * routing the sweep through the engine would stop it completing past-due events.
+ * The P2 scheduler replaces this sweep with a proper multi-hop, history-audited
+ * time engine; until then this remains the one legacy direct status writer.
  */
 export async function completeExpiredEvents(): Promise<void> {
   const expiring = await prisma.event.findMany({
     where: {
-      status: { in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED] },
+      status: {
+        in: [
+          EventStatus.PUBLISHED,
+          EventStatus.REGISTRATION_OPEN,
+          EventStatus.REGISTRATION_CLOSED,
+          EventStatus.ONGOING,
+        ],
+      },
       endsAt: { lt: new Date(Date.now() - COMPLETION_GRACE_MS) },
     },
     select: { id: true, displayConfig: true },
@@ -94,7 +113,7 @@ export async function registerForEvent(
 ): Promise<MyEventDTO> {
   const event = await prisma.event.findUnique({ where: { slug } });
   if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (event.status !== EventStatus.PUBLISHED) {
+  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) {
     throw new AppError("EVENT_CLOSED", "This event is no longer open for registration", 400);
   }
   const now = new Date();

@@ -26,9 +26,17 @@ enum RegistrationStatus {
 enum EventStatus {
   DRAFT
   PUBLISHED
+  REGISTRATION_OPEN
   REGISTRATION_CLOSED
+  ONGOING
   COMPLETED
   CANCELLED
+  ARCHIVED
+}
+
+enum SelectionMode {
+  FCFS
+  CURATED
 }
 
 enum Attendance {
@@ -101,6 +109,12 @@ model Event {
   endsAt               DateTime
   capacity             Int            @default(0)
   status               EventStatus    @default(DRAFT)
+  statusChangedAt          DateTime          @default(now())
+  isOverdue                Boolean           @default(false)
+  gracePeriodMinutes       Int               @default(120)
+  autoCompleteAfterMinutes Int               @default(2880)
+  selectionMode            SelectionMode     @default(FCFS)
+  statusHistory            EventStatusHistory[]
   hasSpeedDating       Boolean        @default(false)
   featured             Boolean        @default(false)
   recommended          Boolean        @default(false)
@@ -282,4 +296,19 @@ model EventReminder {
   failedCount            Int          @default(0)
   createdAt              DateTime     @default(now())
   event                  Event        @relation(fields: [eventId], references: [id])
+}
+
+model EventStatusHistory {
+  id                String       @id @default(cuid())
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId           String
+  fromStatus        EventStatus?
+  toStatus          EventStatus
+  actorType         String       // "ADMIN" | "SYSTEM"
+  actorId           String?
+  reason            String?
+  sideEffectsStatus String       @default("PENDING") // PENDING | DONE | FAILED | NONE
+  createdAt         DateTime     @default(now())
+
+  @@index([eventId, createdAt])
 }

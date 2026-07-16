@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { EventStatus, RegistrationStatus, Attendance, Role, ReminderKind, EmploymentType } from "./enums";
+import {
+  EventStatus,
+  RegistrationStatus,
+  Attendance,
+  Role,
+  ReminderKind,
+  EmploymentType,
+  SelectionMode,
+} from "./enums";
 
 // ---- Auth ----
 export const LoginInput = z.object({
@@ -136,6 +144,29 @@ export const DEFAULT_DISPLAY_CONFIG: EventDisplayConfig = {
   certificate: true,
 };
 
+export const NextAutoTransition = z
+  .object({ to: z.nativeEnum(EventStatus), at: z.string() })
+  .nullable();
+export type NextAutoTransition = z.infer<typeof NextAutoTransition>;
+
+export const EventStatusHistoryDTO = z.object({
+  id: z.string(),
+  fromStatus: z.nativeEnum(EventStatus).nullable(),
+  toStatus: z.nativeEnum(EventStatus),
+  actorType: z.enum(["ADMIN", "SYSTEM"]),
+  actorId: z.string().nullable(),
+  reason: z.string().nullable(),
+  sideEffectsStatus: z.enum(["PENDING", "DONE", "FAILED", "NONE"]),
+  createdAt: z.string(),
+});
+export type EventStatusHistoryDTO = z.infer<typeof EventStatusHistoryDTO>;
+
+export const TransitionEventInput = z.object({
+  to: z.nativeEnum(EventStatus),
+  reason: z.string().optional(),
+});
+export type TransitionEventInput = z.infer<typeof TransitionEventInput>;
+
 export const EventDTO = z.object({
   id: z.string(),
   slug: z.string(),
@@ -175,6 +206,11 @@ export const EventDTO = z.object({
   recordingUrl: z.string().nullable(),
   presentationUrl: z.string().nullable(),
   displayConfig: EventDisplayConfig,
+  statusChangedAt: z.string(),
+  isOverdue: z.boolean(),
+  selectionMode: z.nativeEnum(SelectionMode),
+  registrationOpensAt: z.string().nullable(),
+  nextAutoTransition: NextAutoTransition,
 });
 export type EventDTO = z.infer<typeof EventDTO>;
 
@@ -344,6 +380,8 @@ export const AdminEventInput = z.object({
   recordingUrl: z.string().optional().nullable(),
   presentationUrl: z.string().optional().nullable(),
   displayConfig: EventDisplayConfig.partial().optional(),
+  selectionMode: z.nativeEnum(SelectionMode).optional(),
+  registrationOpensAt: z.string().optional().nullable(),
 });
 export type AdminEventInput = z.infer<typeof AdminEventInput>;
 
