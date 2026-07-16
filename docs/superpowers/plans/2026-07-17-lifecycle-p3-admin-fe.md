@@ -214,14 +214,15 @@ import { logger } from "../../logger";
 
 (Delete the old `import { allowedFrom, canTransition } from "./transitions";` line entirely — the rest of the file is unchanged.)
 
-- [ ] **Step 9: Run the backend regression suite + both typechecks**
+- [ ] **Step 9: Run the backend regression suite + typecheck**
 
 ```bash
 pnpm --filter @repo/backend test
 pnpm --filter @repo/backend typecheck
-pnpm --filter @repo/shared-types typecheck
 ```
-Expected: all green — this is a pure relocation, no behavior change. (`grep -rn "from \"./transitions\"" apps/backend/src` should now return nothing.)
+Expected: both green — this is a pure relocation, no behavior change. (`grep -rn "from \"./transitions\"" apps/backend/src` should now return nothing.)
+
+Note: `@repo/shared-types` has no `tsconfig.json`/`typecheck` script of its own — `pnpm --filter @repo/shared-types typecheck` does not exist as a command and will fail with "Missing script". `lifecycle.ts` is fully type-checked as part of `@repo/backend typecheck` above, since `transitionEvent.ts` imports it (TS type-checks every file reached through an import chain, not just the named symbols). This matches the pre-existing convention for this package — do not add a tsconfig/typecheck script; that would be scope creep beyond this task.
 
 - [ ] **Step 10: Commit**
 
@@ -664,12 +665,15 @@ pnpm --filter @repo/shared-utils test
 ```
 Expected: PASS, all files.
 
-- [ ] **Step 6: Run typecheck**
+- [ ] **Step 6: Typecheck via a consumer**
+
+`@repo/shared-utils` has no `tsconfig.json`/`typecheck` script of its own (same pre-existing situation as `@repo/shared-types` — don't add one, that's scope creep beyond this task). It's type-checked as part of whichever app imports it, which pulls in every file reached through `src/index.ts`'s `export *` chain, including the new `formatTimeAgo`:
 
 ```bash
-pnpm --filter @repo/shared-utils typecheck
+pnpm --filter @repo/backend typecheck
+pnpm --filter @repo/frontend typecheck
 ```
-Expected: clean. (This package has no `typecheck` script currently — check `package.json`; if absent, run `pnpm --filter @repo/shared-utils exec tsc --noEmit` instead and skip adding a script, since no other task needs it as a standing script.)
+Expected: both clean.
 
 - [ ] **Step 7: Commit**
 
@@ -1631,17 +1635,16 @@ CANCELLED."
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Full backend regression + both backend-side typechecks**
+- [ ] **Step 1: Full regression + typechecks**
 
 ```bash
 pnpm --filter @repo/backend test
 pnpm --filter @repo/shared-types test
 pnpm --filter @repo/shared-utils test
 pnpm --filter @repo/backend typecheck
-pnpm --filter @repo/shared-types typecheck
 pnpm --filter @repo/frontend typecheck
 ```
-Expected: all green.
+Expected: all green. (`@repo/shared-types` and `@repo/shared-utils` have no `typecheck` script of their own — they're covered transitively by the two typecheck commands above, per Tasks 1 and 3.)
 
 - [ ] **Step 2: Start the backend + admin frontend dev servers**
 
