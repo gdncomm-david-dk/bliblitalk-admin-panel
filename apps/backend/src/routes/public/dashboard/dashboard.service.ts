@@ -11,6 +11,7 @@ const eventInclude = {
 // Upcoming, portal-visible events (open or closed-for-registration but not past/draft/cancelled).
 const UPCOMING_VISIBLE: EventStatus[] = [
   EventStatus.PUBLISHED,
+  EventStatus.REGISTRATION_OPEN,
   EventStatus.REGISTRATION_CLOSED,
 ];
 

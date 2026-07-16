@@ -15,15 +15,20 @@ export const eventInclude = {
   _count: { select: { registrations: { where: { status: RegistrationStatus.REGISTERED } } } },
 } as const;
 
-// The portal never sees DRAFT or CANCELLED events.
+// The portal never sees DRAFT or CANCELLED events. REGISTRATION_OPEN and ONGOING are
+// the new live states (reachable in P1 via the open-registration action and the manual
+// /transition endpoint); they must stay visible so live events don't vanish.
 const PORTAL_VISIBLE: EventStatus[] = [
   EventStatus.PUBLISHED,
+  EventStatus.REGISTRATION_OPEN,
   EventStatus.REGISTRATION_CLOSED,
+  EventStatus.ONGOING,
   EventStatus.COMPLETED,
 ];
 
 function portalStatusWhere(filter?: PortalEventFilter): EventStatus[] {
-  if (filter === "upcoming") return [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED];
+  if (filter === "upcoming")
+    return [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED];
   if (filter === "completed") return [EventStatus.COMPLETED];
   return PORTAL_VISIBLE;
 }
@@ -52,7 +57,14 @@ const COMPLETION_GRACE_MS = 2 * 60 * 1000;
 export async function completeExpiredEvents(): Promise<void> {
   const expiring = await prisma.event.findMany({
     where: {
-      status: { in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_CLOSED] },
+      status: {
+        in: [
+          EventStatus.PUBLISHED,
+          EventStatus.REGISTRATION_OPEN,
+          EventStatus.REGISTRATION_CLOSED,
+          EventStatus.ONGOING,
+        ],
+      },
       endsAt: { lt: new Date(Date.now() - COMPLETION_GRACE_MS) },
     },
     select: { id: true, displayConfig: true },
@@ -101,7 +113,7 @@ export async function registerForEvent(
 ): Promise<MyEventDTO> {
   const event = await prisma.event.findUnique({ where: { slug } });
   if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
-  if (event.status !== EventStatus.PUBLISHED) {
+  if (event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.REGISTRATION_OPEN) {
     throw new AppError("EVENT_CLOSED", "This event is no longer open for registration", 400);
   }
   const now = new Date();

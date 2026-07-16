@@ -7,7 +7,7 @@ import { prisma } from "../../../db/client";
 // suite is idempotent (re-runnable without reseeding).
 const SELF_REG_SLUGS = ["ai-in-everyday-work"];
 // Synthetic events/users created by tests below use these prefixes.
-const TEST_SLUG_PREFIXES = ["capacity-test-", "speed-dating-test-"];
+const TEST_SLUG_PREFIXES = ["capacity-test-", "speed-dating-test-", "reg-open-test-"];
 
 async function purgeSyntheticData() {
   const events = await prisma.event.findMany({
@@ -117,6 +117,37 @@ describe("events", () => {
       include: { speedDating: true },
     });
     expect(row?.speedDating).not.toBeNull();
+  });
+
+  it("keeps a REGISTRATION_OPEN event visible on the portal and registerable", async () => {
+    // The new lifecycle's registerable state. It must behave like PUBLISHED for the
+    // portal listing and the register guard, or opening registration would hide the
+    // event and block sign-ups.
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const openEvent = await prisma.event.create({
+      data: {
+        slug: `reg-open-test-${Date.now()}`,
+        title: "Registration Open Test Event",
+        description: "test",
+        category: "Technology",
+        location: "Online",
+        startsAt: future,
+        endsAt: future,
+        capacity: 50,
+        status: "REGISTRATION_OPEN",
+        registrationDeadline: future,
+      },
+    });
+
+    const list = await request(app).get("/api/public/events");
+    expect(list.status).toBe(200);
+    expect(list.body.some((e: { slug: string }) => e.slug === openEvent.slug)).toBe(true);
+
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send({ email: "demo@gdn-commerce.com", password: "password123" });
+    const res = await agent.post(`/api/public/events/${openEvent.slug}/register`).send({});
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("REGISTERED");
   });
 
   it("auto-waitlists once capacity is full", async () => {
