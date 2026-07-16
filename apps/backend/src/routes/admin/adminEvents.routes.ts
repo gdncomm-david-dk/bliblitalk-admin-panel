@@ -1,9 +1,16 @@
 import { Router } from "express";
-import { AdminEventInput, AdminEventListQuery, AdminEventStatusInput, AdminEventUpdateInput } from "@repo/shared-types";
+import {
+  AdminEventInput,
+  AdminEventListQuery,
+  AdminEventStatusInput,
+  AdminEventUpdateInput,
+  TransitionEventInput,
+} from "@repo/shared-types";
 import { Permission } from "@repo/auth";
 import { requireAuth, requirePermission } from "../../middleware/requireAuth";
 import { requireEventAccess } from "../../middleware/eventScope";
 import { validate } from "../../middleware/validate";
+import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 import {
   cancelAdminEvent,
   closeAdminEventRegistration,
@@ -111,8 +118,26 @@ adminEventsRoutes.patch(
   async (req, res, next) => {
     try {
       const { status } = req.body as AdminEventStatusInput;
-      const event = await setAdminEventStatus(req.params.id!, status);
+      const event = await setAdminEventStatus(req.params.id!, status, req.userId!);
       res.json(event);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /admin/events/:id/transition — generic guarded transition, writes history
+adminEventsRoutes.post(
+  "/:id/transition",
+  requireAuth,
+  requirePermission(Permission.EVENT_PUBLISH),
+  requireEventAccess("id"),
+  validate(TransitionEventInput),
+  async (req, res, next) => {
+    try {
+      const { to, reason } = req.body as TransitionEventInput;
+      await transitionEvent(req.params.id!, to, { type: "ADMIN", id: req.userId! }, reason);
+      res.json(await getAdminEvent(req.params.id!));
     } catch (err) {
       next(err);
     }
@@ -127,7 +152,7 @@ adminEventsRoutes.post(
   requireEventAccess("id"),
   async (req, res, next) => {
     try {
-      const event = await publishAdminEvent(req.params.id!);
+      const event = await publishAdminEvent(req.params.id!, req.userId!);
       res.json(event);
     } catch (err) {
       next(err);
@@ -143,7 +168,7 @@ adminEventsRoutes.post(
   requireEventAccess("id"),
   async (req, res, next) => {
     try {
-      const event = await cancelAdminEvent(req.params.id!);
+      const event = await cancelAdminEvent(req.params.id!, req.userId!);
       res.json(event);
     } catch (err) {
       next(err);
@@ -159,7 +184,7 @@ adminEventsRoutes.post(
   requireEventAccess("id"),
   async (req, res, next) => {
     try {
-      res.json(await closeAdminEventRegistration(req.params.id!));
+      res.json(await closeAdminEventRegistration(req.params.id!, req.userId!));
     } catch (err) {
       next(err);
     }
@@ -174,7 +199,7 @@ adminEventsRoutes.post(
   requireEventAccess("id"),
   async (req, res, next) => {
     try {
-      res.json(await openAdminEventRegistration(req.params.id!));
+      res.json(await openAdminEventRegistration(req.params.id!, req.userId!));
     } catch (err) {
       next(err);
     }

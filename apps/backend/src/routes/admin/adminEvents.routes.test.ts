@@ -75,7 +75,7 @@ describe("admin events CRUD", () => {
     expect(res.body.capacity).toBe(250);
   });
 
-  it("publishes a draft, then rejects publishing it again", async () => {
+  it("publishes a draft; publishing an already-published event is an idempotent no-op", async () => {
     const agent = await loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
@@ -85,8 +85,24 @@ describe("admin events CRUD", () => {
     expect(published.status).toBe(200);
     expect(published.body.status).toBe("PUBLISHED");
 
+    // transitionEvent treats same-status as a no-op (not an error) — see
+    // apps/backend/src/lib/lifecycle/transitionEvent.ts.
     const again = await agent.post(`/api/admin/events/${created.body.id}/publish`);
-    expect(again.status).toBe(400);
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe("PUBLISHED");
+  });
+
+  it("rejects publishing an event that can no longer legally reach PUBLISHED", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent
+      .post("/api/admin/events")
+      .send(validPayload({ slug: `${TEST_SLUG_PREFIX}publish-cancelled` }));
+    await agent.post(`/api/admin/events/${created.body.id}/publish`);
+    await agent.post(`/api/admin/events/${created.body.id}/cancel`);
+
+    const res = await agent.post(`/api/admin/events/${created.body.id}/publish`);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
   });
 
   it("cancels a published event", async () => {
@@ -101,19 +117,27 @@ describe("admin events CRUD", () => {
     expect(res.body.status).toBe("CANCELLED");
   });
 
-  it("manually overrides status, bypassing the publish lifecycle's own guardrails", async () => {
+  it("manual status override now enforces the transition table", async () => {
     const agent = await loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status` }));
 
-    // A draft has never gone through /publish, so the guided lifecycle would
-    // never allow DRAFT -> COMPLETED directly — the manual override can.
+    // A draft has never gone through /publish, so DRAFT -> COMPLETED is illegal per
+    // the transition table — the manual override now routes through transitionEvent
+    // too, so it's rejected exactly like POST /transition would reject it.
     const res = await agent
       .patch(`/api/admin/events/${created.body.id}/status`)
       .send({ status: "COMPLETED" });
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("COMPLETED");
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
+
+    // A legal forced jump still works.
+    const legal = await agent
+      .patch(`/api/admin/events/${created.body.id}/status`)
+      .send({ status: "PUBLISHED" });
+    expect(legal.status).toBe(200);
+    expect(legal.body.status).toBe("PUBLISHED");
   });
 
   it("rejects an invalid status value on the manual override", async () => {
@@ -197,5 +221,38 @@ describe("admin events CRUD", () => {
     expect(patched.body.speakers.map((s: { id: string }) => s.id)).toEqual([s2.body.id]);
 
     await prisma.speaker.deleteMany({ where: { name: { startsWith: TEST_SLUG_PREFIX } } });
+  });
+
+  it("transitions via POST /transition and writes history", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}transition-me` }));
+    const res = await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("PUBLISHED");
+    expect(typeof res.body.statusChangedAt).toBe("string");
+    expect(res.body.isOverdue).toBe(false);
+  });
+
+  it("rejects an illegal transition with 409 + allowed list", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}bad-transition` }));
+    // PATCH /:id/status is now guarded by the same transition table (DRAFT -> COMPLETED
+    // is illegal), so this test seeds the precondition directly rather than going through
+    // the now-guarded HTTP override — it exercises transitionEvent's 409 response, not the
+    // (now impossible) illegal-jump-via-status path.
+    await prisma.event.update({ where: { id: created.body.id }, data: { status: "COMPLETED" } });
+    const res = await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "REGISTRATION_OPEN" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
+    expect(res.body.error.details.allowed).toContain("ARCHIVED");
+  });
+
+  it("returns the new lifecycle fields on GET", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}dto-fields`, selectionMode: "CURATED" }));
+    const res = await agent.get(`/api/admin/events/${created.body.id}`);
+    expect(res.body.selectionMode).toBe("CURATED");
+    expect(res.body).toHaveProperty("registrationOpensAt");
+    expect(res.body).toHaveProperty("nextAutoTransition");
   });
 });
