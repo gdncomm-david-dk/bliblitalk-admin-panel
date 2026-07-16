@@ -5,12 +5,14 @@ import type {
   AdminEventFeedbackDTO,
   AdminEventInput,
   AdminRegistrationDTO,
+  AdminSpeakerDTO,
   AdminSpeedDatingRegistrationDTO,
   EventDTO,
 } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
 import { useToastStore } from "../../../store/toastStore";
 import { ImageUploadField } from "../../../components/ImageUploadField";
+import { SpeakerFormModal } from "../../../components/SpeakerFormModal";
 import { StatCard } from "./StatCard";
 import { FIELD_CLASS, TEXTAREA_CLASS } from "./fieldStyles";
 
@@ -41,6 +43,7 @@ interface FormState {
   capacity: string;
   bannerUrl: string;
   thumbnailUrl: string;
+  speakers: { id: string; name: string; avatarUrl: string | null }[];
 }
 
 function fromEvent(e: EventDTO): FormState {
@@ -57,6 +60,7 @@ function fromEvent(e: EventDTO): FormState {
     capacity: String(e.capacity),
     bannerUrl: e.bannerUrl ?? "",
     thumbnailUrl: e.thumbnailUrl ?? "",
+    speakers: e.speakers.map((s) => ({ id: s.id, name: s.name, avatarUrl: s.avatarUrl })),
   };
 }
 
@@ -97,6 +101,36 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  const [speakerQuery, setSpeakerQuery] = useState("");
+  const [speakerResults, setSpeakerResults] = useState<AdminSpeakerDTO[]>([]);
+  const [creatingSpeaker, setCreatingSpeaker] = useState(false);
+
+  useEffect(() => {
+    if (!speakerQuery.trim()) {
+      setSpeakerResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .get<AdminSpeakerDTO[]>(`/admin/speakers?q=${encodeURIComponent(speakerQuery.trim())}`)
+        .then(setSpeakerResults)
+        .catch(() => setSpeakerResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [speakerQuery]);
+
+  function attachSpeaker(s: { id: string; name: string; avatarUrl: string | null }) {
+    setForm((f) =>
+      f.speakers.some((x) => x.id === s.id) ? f : { ...f, speakers: [...f.speakers, s] },
+    );
+    setSpeakerQuery("");
+    setSpeakerResults([]);
+  }
+
+  function detachSpeaker(id: string) {
+    setForm((f) => ({ ...f, speakers: f.speakers.filter((s) => s.id !== id) }));
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -117,6 +151,7 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
         capacity: Number(form.capacity) || 0,
         bannerUrl: form.bannerUrl || null,
         thumbnailUrl: form.thumbnailUrl || null,
+        speakerIds: form.speakers.map((s) => s.id),
       };
       await api.patch<EventDTO>(`/admin/events/${event.id}`, payload);
       showToast("Event saved successfully.");
@@ -171,6 +206,70 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
           <label className="mb-1 block text-xs font-semibold text-muted">Venue</label>
           <input value={form.venue} onChange={(e) => set("venue", e.target.value)} className={FIELD_CLASS} />
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-muted">Speakers</label>
+          {form.speakers.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {form.speakers.map((s) => (
+                <span key={s.id} className="inline-flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1 pr-2 text-sm text-ink">
+                  {s.avatarUrl ? (
+                    <img src={s.avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+                  ) : (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 text-xs font-bold text-primary">
+                      {s.name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  {s.name}
+                  <button
+                    type="button"
+                    onClick={() => detachSpeaker(s.id)}
+                    aria-label={`Remove ${s.name}`}
+                    className="text-muted transition-colors hover:text-status-red"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="relative">
+            <input
+              value={speakerQuery}
+              onChange={(e) => setSpeakerQuery(e.target.value)}
+              placeholder="Type to search speakers..."
+              className={FIELD_CLASS}
+            />
+            {speakerQuery.trim() && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-line bg-white shadow-lg">
+                {speakerResults
+                  .filter((r) => !form.speakers.some((s) => s.id === r.id))
+                  .map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => attachSpeaker({ id: r.id, name: r.name, avatarUrl: r.avatarUrl })}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface"
+                    >
+                      <span className="font-medium">{r.name}</span>
+                      {(r.title || r.company) && (
+                        <span className="text-xs text-muted">
+                          {[r.title, r.company].filter(Boolean).join(", ")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => setCreatingSpeaker(true)}
+                  className="w-full border-t border-line px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-primary-50"
+                >
+                  + Create new speaker &ldquo;{speakerQuery.trim()}&rdquo;
+                </button>
+              </div>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted">Manage the full speaker directory on the Speakers page.</p>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <ImageUploadField
             label="Hero Banner"
@@ -222,6 +321,17 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
           </button>
         </div>
       </form>
+
+      {creatingSpeaker && (
+        <SpeakerFormModal
+          speaker={null}
+          onClose={() => setCreatingSpeaker(false)}
+          onSaved={(s) => {
+            setCreatingSpeaker(false);
+            attachSpeaker({ id: s.id, name: s.name, avatarUrl: s.avatarUrl });
+          }}
+        />
+      )}
     </div>
   );
 }
