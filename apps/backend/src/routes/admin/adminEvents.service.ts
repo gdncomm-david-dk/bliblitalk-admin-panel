@@ -4,13 +4,14 @@ import type {
   AdminEventUpdateInput,
   EventDisplayConfig,
   EventDTO,
+  EventStatusHistoryDTO,
   Role,
 } from "@repo/shared-types";
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 import { eventInclude } from "../public/events/events.service";
-import { toEventDTO } from "../../lib/shared/mappers";
+import { toEventDTO, toEventStatusHistoryDTO } from "../../lib/shared/mappers";
 import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 
 function mergeDisplayConfig(
@@ -67,6 +68,16 @@ export async function getAdminEvent(id: string): Promise<EventDTO> {
   const event = await prisma.event.findUnique({ where: { id }, include: eventInclude });
   if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
   return toEventDTO(event);
+}
+
+export async function listEventHistory(id: string): Promise<EventStatusHistoryDTO[]> {
+  const event = await prisma.event.findUnique({ where: { id } });
+  if (!event) throw new AppError("NOT_FOUND", "Event not found", 404);
+  const rows = await prisma.eventStatusHistory.findMany({
+    where: { eventId: id },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toEventStatusHistoryDTO);
 }
 
 export async function createAdminEvent(

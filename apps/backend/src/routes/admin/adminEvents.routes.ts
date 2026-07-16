@@ -18,6 +18,7 @@ import {
   deleteAdminEvent,
   getAdminEvent,
   listAdminEvents,
+  listEventHistory,
   openAdminEventRegistration,
   publishAdminEvent,
   setAdminEventStatus,
@@ -53,6 +54,21 @@ adminEventsRoutes.get(
     try {
       const event = await getAdminEvent(req.params.id!);
       res.json(event);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /admin/events/:id/history
+adminEventsRoutes.get(
+  "/:id/history",
+  requireAuth,
+  requirePermission(Permission.EVENT_READ),
+  requireEventAccess("id"),
+  async (req, res, next) => {
+    try {
+      res.json(await listEventHistory(req.params.id!));
     } catch (err) {
       next(err);
     }

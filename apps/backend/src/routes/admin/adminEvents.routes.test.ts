@@ -255,4 +255,35 @@ describe("admin events CRUD", () => {
     expect(res.body).toHaveProperty("registrationOpensAt");
     expect(res.body).toHaveProperty("nextAutoTransition");
   });
+
+  it("returns the status history for an event, newest first", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}history` }));
+    await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go live" });
+    await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "REGISTRATION_OPEN" });
+
+    const res = await agent.get(`/api/admin/events/${created.body.id}/history`);
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(2);
+    expect(res.body[0].toStatus).toBe("REGISTRATION_OPEN");
+    expect(res.body[0].fromStatus).toBe("PUBLISHED");
+    expect(res.body[1].toStatus).toBe("PUBLISHED");
+    expect(res.body[1].reason).toBe("go live");
+    expect(res.body[1].actorType).toBe("ADMIN");
+  });
+
+  it("404s for a nonexistent event's history", async () => {
+    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const res = await agent.get("/api/admin/events/does-not-exist/history");
+    expect(res.status).toBe(404);
+  });
+
+  it("scopes history access to the event admin's assigned events", async () => {
+    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const notAssigned = await prisma.event.findFirstOrThrow({
+      where: { slug: "love-hate-work-relationship" },
+    });
+    const res = await eventAgent.get(`/api/admin/events/${notAssigned.id}/history`);
+    expect(res.status).toBe(403);
+  });
 });

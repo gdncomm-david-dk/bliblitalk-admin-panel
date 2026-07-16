@@ -2,6 +2,7 @@ import type {
   Announcement,
   Certificate,
   Event,
+  EventStatusHistory,
   Feedback,
   Registration,
   Speaker,
@@ -14,6 +15,7 @@ import type {
   DiscussionPointDTO,
   EventDisplayConfig,
   EventDTO,
+  EventStatusHistoryDTO,
   FaqItemDTO,
   LearningPointDTO,
   MyEventDTO,
@@ -126,6 +128,19 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     selectionMode: e.selectionMode,
     registrationOpensAt: e.registrationOpensAt?.toISOString() ?? null,
     nextAutoTransition: computeNextAutoTransition(e),
+  };
+}
+
+export function toEventStatusHistoryDTO(h: EventStatusHistory): EventStatusHistoryDTO {
+  return {
+    id: h.id,
+    fromStatus: h.fromStatus,
+    toStatus: h.toStatus,
+    actorType: h.actorType as "ADMIN" | "SYSTEM",
+    actorId: h.actorId,
+    reason: h.reason,
+    sideEffectsStatus: h.sideEffectsStatus as "PENDING" | "DONE" | "FAILED" | "NONE",
+    createdAt: h.createdAt.toISOString(),
   };
 }
 
