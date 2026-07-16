@@ -119,7 +119,15 @@ describe("transitionEvent", () => {
     const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]!.reason).toMatchObject({ code: "INVALID_TRANSITION", status: 409 });
+    // The loser's error must reflect the REAL post-race status (COMPLETED, the winner's
+    // target), not the stale ONGOING it originally read — a stale `from` here would mean
+    // the reported `allowed` list is wrong too (it would wrongly include CANCELLED, the
+    // very target this call just got rejected for).
+    expect(rejected[0]!.reason).toMatchObject({
+      code: "INVALID_TRANSITION",
+      status: 409,
+      details: { from: EventStatus.COMPLETED, to: EventStatus.CANCELLED, allowed: [EventStatus.ARCHIVED] },
+    });
 
     const history = await prisma.eventStatusHistory.count({ where: { eventId: ev.id } });
     expect(history).toBe(1);

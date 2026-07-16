@@ -52,7 +52,7 @@ export function statusLabel(status: string): string {
  * Whether an event is currently happening (now is within [startsAt, endsAt]).
  * Purely a display concern — the stored EventStatus doesn't change while live;
  * it still flips PUBLISHED/REGISTRATION_CLOSED -> COMPLETED only once endsAt passes
- * (see the API's completeExpiredEvents sweep).
+ * (see the API's sweepEventLifecycle scheduler).
  */
 export function isEventLive(event: { status: string; startsAt: string | Date; endsAt: string | Date }): boolean {
   if (event.status !== "PUBLISHED" && event.status !== "REGISTRATION_CLOSED") return false;
