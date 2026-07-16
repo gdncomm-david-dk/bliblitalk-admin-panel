@@ -13,6 +13,7 @@ import {
   HeartIcon,
   HomeIcon,
   MailIcon,
+  MicIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
@@ -42,6 +43,7 @@ const NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: HomeIcon },
       { to: "/events", label: "Event Management", icon: GridIcon, permission: Permission.EVENT_READ },
+      { to: "/speakers", label: "Speakers", icon: MicIcon, permission: Permission.EVENT_UPDATE },
       { to: "/speed-dating-settings", label: "Speed Dating", icon: HeartIcon, permission: Permission.SPEEDDATING_MANAGE },
       { to: "/feedback-settings", label: "Reviews & Feedback", icon: StarIcon, permission: Permission.EVENT_READ },
       { to: "/certificate-settings", label: "Certificates", icon: AwardIcon, permission: Permission.CERTIFICATE_MANAGE },
