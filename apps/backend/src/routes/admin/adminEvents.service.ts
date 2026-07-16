@@ -111,6 +111,9 @@ export async function createAdminEvent(
       status: EventStatus.DRAFT,
       ownerId,
       admins: { connect: [{ id: ownerId }] },
+      ...(input.speakerIds !== undefined && {
+        speakers: { connect: input.speakerIds.map((id) => ({ id })) },
+      }),
     },
     include: eventInclude,
   });
@@ -167,6 +170,9 @@ export async function updateAdminEvent(
       ...(input.presentationUrl !== undefined && { presentationUrl: input.presentationUrl }),
       ...(input.displayConfig !== undefined && {
         displayConfig: mergeDisplayConfig(existing.displayConfig, input.displayConfig),
+      }),
+      ...(input.speakerIds !== undefined && {
+        speakers: { set: input.speakerIds.map((id) => ({ id })) },
       }),
     },
     include: eventInclude,

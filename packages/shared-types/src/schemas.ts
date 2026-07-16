@@ -66,6 +66,27 @@ export const SpeakerDTO = z.object({
 });
 export type SpeakerDTO = z.infer<typeof SpeakerDTO>;
 
+export const CreateSpeakerInput = z.object({
+  name: z.string().min(1, "Name is required"),
+  title: z.string().optional().nullable(),
+  company: z.string().optional().nullable(),
+  bioShort: z.string().optional().nullable(),
+  bioLong: z.string().optional().nullable(),
+  credentials: z.array(z.string()).optional().default([]),
+  avatarUrl: z.string().optional().nullable(),
+  featured: z.boolean().optional().default(false),
+});
+export type CreateSpeakerInput = z.infer<typeof CreateSpeakerInput>;
+
+export const UpdateSpeakerInput = CreateSpeakerInput.partial();
+export type UpdateSpeakerInput = z.infer<typeof UpdateSpeakerInput>;
+
+/** Speaker row for the admin management page — DTO plus usage count. */
+export const AdminSpeakerDTO = SpeakerDTO.extend({
+  eventCount: z.number().int(),
+});
+export type AdminSpeakerDTO = z.infer<typeof AdminSpeakerDTO>;
+
 // ---- Event detail-page content (CMS-editable) ----
 export const LearningPointDTO = z.object({
   icon: z.string(),
@@ -319,6 +340,7 @@ export const AdminEventInput = z.object({
   importantNotes: z.string().optional().nullable(),
   learningPoints: z.array(LearningPointDTO).optional(),
   galleryImages: z.array(z.string()).optional(),
+  speakerIds: z.array(z.string()).optional(),
   recordingUrl: z.string().optional().nullable(),
   presentationUrl: z.string().optional().nullable(),
   displayConfig: EventDisplayConfig.partial().optional(),
