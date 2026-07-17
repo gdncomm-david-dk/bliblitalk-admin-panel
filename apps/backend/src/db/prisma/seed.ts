@@ -295,6 +295,7 @@ async function main() {
       recommended: true,
       // Shortlist-only: seat count hidden; every registrant waits to be shortlisted.
       showRemainingSeats: false,
+      selectionMode: "CURATED",
       ...defaultMeta(influenceStartsAt),
     },
   });
@@ -444,7 +445,7 @@ async function main() {
   // Demo the seat-visibility toggle: hide the remaining-seats counter on one event.
   await prisma.event.update({
     where: { id: learning.id },
-    data: { showRemainingSeats: false },
+    data: { showRemainingSeats: false, selectionMode: "CURATED" },
   });
 
   // ---- Certificates (attended events) ----
