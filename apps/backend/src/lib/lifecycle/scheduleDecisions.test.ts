@@ -86,8 +86,8 @@ describe("decideTarget", () => {
 
   it("closes registration once the event's own start time has passed, even with no deadline and unlimited capacity", () => {
     // Safety net: REGISTRATION_OPEN can only reach ONGOING via REGISTRATION_CLOSED
-    // (see transitions.ts), so an event with neither a deadline nor a capacity cap
-    // must still close once its start time arrives, or it would never leave
+    // (see packages/shared-types/src/lifecycle.ts), so an event with neither a
+    // deadline nor a capacity cap must still close once its start time arrives, or it would never leave
     // REGISTRATION_OPEN at all.
     expect(
       decideTarget(

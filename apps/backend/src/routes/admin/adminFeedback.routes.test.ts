@@ -131,7 +131,7 @@ describe("admin registration open/close toggle", () => {
     return agent;
   }
 
-  // Under the 8-state transition table (apps/backend/src/lib/lifecycle/transitions.ts),
+  // Under the 8-state transition table (packages/shared-types/src/lifecycle.ts),
   // "close registration" (-> REGISTRATION_CLOSED) is only legal from REGISTRATION_OPEN,
   // and "open/reopen registration" (-> REGISTRATION_OPEN) is legal from PUBLISHED or
   // REGISTRATION_CLOSED. The fixture event starts PUBLISHED, so registration must be

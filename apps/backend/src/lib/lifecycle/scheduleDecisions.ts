@@ -29,8 +29,8 @@ export type LifecycleCandidate = {
  * registration; waitlist ON + full stays open and keeps waitlisting. It ALSO
  * closes once the event's own start time passes, regardless of deadline or
  * capacity — REGISTRATION_OPEN can only reach ONGOING via REGISTRATION_CLOSED
- * (see transitions.ts), so without this an event with no deadline and no
- * capacity cap would never leave REGISTRATION_OPEN at all.
+ * (see packages/shared-types/src/lifecycle.ts), so without this an event with
+ * no deadline and no capacity cap would never leave REGISTRATION_OPEN at all.
  */
 export function decideTarget(e: LifecycleCandidate, now: Date): EventStatus | null {
   switch (e.status) {
