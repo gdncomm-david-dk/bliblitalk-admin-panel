@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
-import { EventStatus } from "@repo/shared-types";
 import type { EventDTO } from "@repo/shared-types";
 import { getEventDisplayStatus, isEventLive, statusLabel } from "@repo/shared-utils";
 import { api, ApiRequestError } from "../../services/api";
-import { useToastStore } from "../../store/toastStore";
 import {
   AwardIcon,
   BellIcon,
@@ -25,6 +23,8 @@ import {
   StarIcon,
   UsersIcon,
 } from "../../components/icons";
+import { LifecycleActionBar } from "../../components/LifecycleActionBar";
+import { OverdueBanner } from "../../components/OverdueBanner";
 import { OverviewTab } from "./workspace/OverviewTab";
 import { ParticipantsTab } from "./workspace/ParticipantsTab";
 import { ShortlistTab } from "./workspace/ShortlistTab";
@@ -35,6 +35,7 @@ import { FeedbackTab } from "./workspace/FeedbackTab";
 import { RemindersTab } from "./workspace/RemindersTab";
 import { EventContentTab } from "./workspace/EventContentTab";
 import { SettingsTab } from "./workspace/SettingsTab";
+import { HistoryTab } from "./workspace/HistoryTab";
 
 const PORTAL_BASE = import.meta.env.VITE_PORTAL_BASE_URL ?? "http://localhost:5173";
 
@@ -49,10 +50,9 @@ const TABS = [
   { key: "reminders", label: "Reminders", icon: BellIcon },
   { key: "content", label: "Event Content", icon: FileIcon },
   { key: "settings", label: "Settings", icon: SettingsIcon },
+  { key: "history", label: "History", icon: ClockIcon },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
-
-const STATUS_OPTIONS = Object.values(EventStatus);
 
 function MoreMenu({ event, onDelete }: { event: EventDTO; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
@@ -103,8 +103,6 @@ export function EventWorkspacePage() {
   const [event, setEvent] = useState<EventDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [changingStatus, setChangingStatus] = useState(false);
-  const showToast = useToastStore((s) => s.show);
 
   const tabParam = searchParams.get("tab") as TabKey | null;
   const tab: TabKey = tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : "overview";
@@ -123,21 +121,6 @@ export function EventWorkspacePage() {
 
   function setTab(next: TabKey) {
     setSearchParams(next === "overview" ? {} : { tab: next });
-  }
-
-  async function onChangeStatus(status: string) {
-    if (!event || status === event.status) return;
-    setActionError(null);
-    setChangingStatus(true);
-    try {
-      await api.patch(`/admin/events/${event.id}/status`, { status });
-      showToast("Event status updated.");
-      reload();
-    } catch (err) {
-      setActionError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update event status.");
-    } finally {
-      setChangingStatus(false);
-    }
   }
 
   async function onDelete() {
@@ -184,28 +167,17 @@ export function EventWorkspacePage() {
 
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-xl">
-            <div className="relative inline-flex items-center gap-1.5 rounded-full bg-white/15 pl-3 pr-6 py-1 text-xs font-semibold">
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isEventLive(event) ? "bg-status-red" : "bg-status-green"}`} />
-              <select
-                value={event.status}
-                disabled={changingStatus}
-                onChange={(e) => onChangeStatus(e.target.value)}
-                aria-label="Event status"
-                className="appearance-none bg-transparent text-xs font-semibold text-white outline-none disabled:opacity-60 [&>option]:text-ink"
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel(s)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDownIcon width={12} height={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isEventLive(event) ? "bg-status-red" : "bg-status-green"}`}
+              />
+              {statusLabel(getEventDisplayStatus(event))}
             </div>
-            {isEventLive(event) && (
-              <span className="ml-1.5 inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-                {getEventDisplayStatus(event)}
-              </span>
-            )}
+
+            <div className="mt-2.5">
+              <LifecycleActionBar event={event} onChanged={reload} />
+            </div>
+
             <h1 className="mt-3 text-2xl font-extrabold leading-tight sm:text-3xl">{event.title}</h1>
             {event.subtitle && <p className="mt-1.5 text-sm text-white/80">{event.subtitle}</p>}
 
@@ -293,6 +265,8 @@ export function EventWorkspacePage() {
         </div>
       </div>
 
+      <OverdueBanner event={event} onChanged={reload} />
+
       {/* Tabs */}
       <div className="mt-5 flex gap-1 overflow-x-auto border-b border-line">
         {visibleTabs.map((t) => {
@@ -325,6 +299,7 @@ export function EventWorkspacePage() {
         {tab === "reminders" && <RemindersTab eventId={event.id} />}
         {tab === "content" && <EventContentTab event={event} onSaved={reload} />}
         {tab === "settings" && <SettingsTab event={event} onSaved={reload} />}
+        {tab === "history" && <HistoryTab eventId={event.id} />}
       </div>
     </div>
   );
