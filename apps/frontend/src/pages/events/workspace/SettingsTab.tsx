@@ -22,7 +22,6 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
   const [displayConfig, setDisplayConfig] = useState<EventDisplayConfig>(event.displayConfig);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [togglingRegistration, setTogglingRegistration] = useState(false);
   const showToast = useToastStore((s) => s.show);
 
   function toggleDisplay(key: keyof EventDisplayConfig, value: boolean) {
@@ -51,60 +50,19 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
     }
   }
 
-  // Under the 8-state lifecycle, "open" (-> REGISTRATION_OPEN) is legal from PUBLISHED
-  // (first open) or REGISTRATION_CLOSED (reopen); "close" (-> REGISTRATION_CLOSED) is
-  // only legal from REGISTRATION_OPEN.
-  async function onToggleRegistration() {
-    setError(null);
-    setTogglingRegistration(true);
-    try {
-      const action = event.status === "REGISTRATION_OPEN" ? "close-registration" : "open-registration";
-      await api.post(`/admin/events/${event.id}/${action}`);
-      showToast(action === "open-registration" ? "Registration opened." : "Registration closed.");
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update registration status.");
-    } finally {
-      setTogglingRegistration(false);
-    }
-  }
-
-  const canToggleRegistration =
-    event.status === "PUBLISHED" ||
-    event.status === "REGISTRATION_OPEN" ||
-    event.status === "REGISTRATION_CLOSED";
-
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-line bg-white p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ink">Registration</p>
-            <p className="text-xs text-muted">
-              {event.status === "REGISTRATION_OPEN"
-                ? "Registration is open."
-                : event.status === "REGISTRATION_CLOSED"
-                  ? "Registration is closed."
-                  : "Registration hasn't been opened yet."}
-            </p>
-          </div>
-          <button
-            onClick={onToggleRegistration}
-            disabled={!canToggleRegistration || togglingRegistration}
-            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-40"
-          >
-            {event.status === "REGISTRATION_OPEN"
-              ? "Close Registration"
-              : event.status === "REGISTRATION_CLOSED"
-                ? "Reopen Registration"
-                : "Open Registration"}
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Capacity</label>
-            <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} className={FIELD_CLASS} />
+            <input
+              type="number"
+              min={0}
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              className={FIELD_CLASS}
+            />
           </div>
         </div>
 
