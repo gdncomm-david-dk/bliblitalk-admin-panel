@@ -9,6 +9,7 @@ const TARGET_LABEL: Partial<Record<EventStatus, string>> = {
   [EventStatus.PUBLISHED]: "Publish",
   [EventStatus.REGISTRATION_OPEN]: "Open Registration",
   [EventStatus.REGISTRATION_CLOSED]: "Close Registration",
+  [EventStatus.ONGOING]: "Start Event",
   [EventStatus.CANCELLED]: "Cancel",
   [EventStatus.COMPLETED]: "End Event",
   [EventStatus.ARCHIVED]: "Archive",
@@ -18,6 +19,7 @@ const SUCCESS_MESSAGE: Partial<Record<EventStatus, string>> = {
   [EventStatus.PUBLISHED]: "Event published.",
   [EventStatus.REGISTRATION_OPEN]: "Registration opened.",
   [EventStatus.REGISTRATION_CLOSED]: "Registration closed.",
+  [EventStatus.ONGOING]: "Event started.",
   [EventStatus.CANCELLED]: "Event cancelled.",
   [EventStatus.ARCHIVED]: "Event archived.",
 };
