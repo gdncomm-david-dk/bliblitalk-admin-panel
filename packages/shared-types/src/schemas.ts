@@ -95,6 +95,30 @@ export const AdminSpeakerDTO = SpeakerDTO.extend({
 });
 export type AdminSpeakerDTO = z.infer<typeof AdminSpeakerDTO>;
 
+export const CategoryDTO = z.object({
+  id: z.string(),
+  name: z.string(),
+  isActive: z.boolean(),
+});
+export type CategoryDTO = z.infer<typeof CategoryDTO>;
+
+export const CreateCategoryInput = z.object({
+  name: z.string().min(1, "Name is required"),
+});
+export type CreateCategoryInput = z.infer<typeof CreateCategoryInput>;
+
+export const UpdateCategoryInput = z.object({
+  name: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateCategoryInput = z.infer<typeof UpdateCategoryInput>;
+
+/** Category row for the admin management page — DTO plus usage count. */
+export const AdminCategoryDTO = CategoryDTO.extend({
+  eventCount: z.number().int(),
+});
+export type AdminCategoryDTO = z.infer<typeof AdminCategoryDTO>;
+
 // ---- Event detail-page content (CMS-editable) ----
 export const LearningPointDTO = z.object({
   icon: z.string(),
@@ -177,6 +201,7 @@ export const EventDTO = z.object({
   thumbnailUrl: z.string().nullable(),
   description: z.string(),
   category: z.string(),
+  categoryId: z.string(),
   tags: z.array(z.string()),
   location: z.string(),
   startsAt: z.string(), // ISO string
@@ -355,7 +380,7 @@ export const AdminEventInput = z.object({
   bannerUrl: z.string().optional().nullable(),
   thumbnailUrl: z.string().optional().nullable(),
   description: z.string().min(1, "Description is required"),
-  category: z.string().min(1, "Category is required"),
+  categoryId: z.string().min(1, "Category is required"),
   tags: z.array(z.string()).optional().default([]),
   location: z.string().min(1, "Location is required"),
   startsAt: z.string().min(1, "Start time is required"),
