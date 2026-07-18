@@ -5,6 +5,7 @@ import { toEventDTO } from "../../../lib/shared/mappers";
 
 const eventInclude = {
   speakers: true,
+  category: true,
   _count: { select: { registrations: true } },
 } as const;
 
