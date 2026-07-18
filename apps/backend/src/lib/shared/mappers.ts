@@ -2,6 +2,7 @@ import type {
   Announcement,
   Certificate,
   Event,
+  EventCategory,
   EventStatusHistory,
   Feedback,
   Registration,
@@ -40,6 +41,7 @@ export function toSpeakerDTO(s: Speaker): SpeakerDTO {
 
 type EventWithRelations = Event & {
   speakers: Speaker[];
+  category: EventCategory;
   _count?: { registrations: number };
 };
 
@@ -93,7 +95,8 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     bannerUrl: e.bannerUrl,
     thumbnailUrl: e.thumbnailUrl,
     description: e.description,
-    category: e.category,
+    category: e.category.name,
+    categoryId: e.categoryId,
     tags: e.tags,
     location: e.location,
     startsAt: e.startsAt.toISOString(),
