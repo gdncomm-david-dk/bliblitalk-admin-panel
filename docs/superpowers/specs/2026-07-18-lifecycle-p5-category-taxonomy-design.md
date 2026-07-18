@@ -173,13 +173,21 @@ dedupe-and-append pattern but single-select instead of multi.
 - **Migration:** a one-off verification (script or test run directly after migrating) confirming
   exactly 5 `EventCategory` rows exist and all 11 existing events resolve to a non-null
   `categoryId` matching their pre-migration `category` string.
-- **Frontend (bliblitalk-admin):** component tests for `CategoryFormModal` and the combobox's
-  create-flow (typed text pre-fills the modal, per Decision #3), plus updating existing
-  `EventFormPage`/`OverviewTab` tests that reference the old `category` string field.
+- **Frontend (bliblitalk-admin):** no automated component tests — this repo's frontend has no
+  test harness at all (`apps/frontend/package.json` has no `test` script and no
+  vitest/testing-library dependency; confirmed at plan time, matching P3's actual outcome, which
+  left this open but ultimately shipped no FE test files either). Verification here is a live
+  manual browser walkthrough instead (see below), consistent with precedent.
 - **bliblitalk-user-fe:** no test changes needed (Decision #4 — its contract is unchanged). A live
   post-merge sanity check confirms gradients/filter-tabs still render correctly against the
   migrated data, matching this project's standing live-verification practice for cross-repo
   phases.
+- **Live browser verification (bliblitalk-admin):** create a category inline from the event form
+  combobox, confirm it's immediately selected; edit an event to change its category; deactivate a
+  category attached to zero upcoming events and confirm it disappears from the combobox's search
+  results but the management page still lists it (inactive); attempt to delete/deactivate a
+  category attached to an upcoming event and confirm the `409 CATEGORY_IN_USE` block surfaces
+  correctly; confirm the Analytics page's "Events by Category" chart still renders correctly.
 
 ## Out of scope for P5 (explicitly deferred)
 
