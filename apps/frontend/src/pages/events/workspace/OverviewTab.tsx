@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import dayjs from "dayjs";
 import type {
+  AdminCategoryDTO,
   AdminCertificateDTO,
   AdminEventFeedbackDTO,
   AdminEventInput,
@@ -13,6 +14,7 @@ import { api, ApiRequestError } from "../../../services/api";
 import { useToastStore } from "../../../store/toastStore";
 import { ImageUploadField } from "../../../components/ImageUploadField";
 import { SpeakerFormModal } from "../../../components/SpeakerFormModal";
+import { CategoryFormModal } from "../../../components/CategoryFormModal";
 import { StatCard } from "./StatCard";
 import { FIELD_CLASS, TEXTAREA_CLASS } from "./fieldStyles";
 
@@ -33,7 +35,8 @@ function toInputDateTime(iso: string | null): string {
 interface FormState {
   title: string;
   subtitle: string;
-  category: string;
+  categoryId: string;
+  categoryName: string;
   location: string;
   venue: string;
   description: string;
@@ -50,7 +53,8 @@ function fromEvent(e: EventDTO): FormState {
   return {
     title: e.title,
     subtitle: e.subtitle ?? "",
-    category: e.category,
+    categoryId: e.categoryId,
+    categoryName: e.category,
     location: e.location,
     venue: e.venue ?? "",
     description: e.description,
@@ -104,6 +108,30 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
   const [speakerQuery, setSpeakerQuery] = useState("");
   const [speakerResults, setSpeakerResults] = useState<AdminSpeakerDTO[]>([]);
   const [creatingSpeaker, setCreatingSpeaker] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [categoryResults, setCategoryResults] = useState<AdminCategoryDTO[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  useEffect(() => {
+    if (!categoryQuery.trim()) {
+      setCategoryResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .get<AdminCategoryDTO[]>(`/admin/categories?q=${encodeURIComponent(categoryQuery.trim())}`)
+        .then(setCategoryResults)
+        .catch(() => setCategoryResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [categoryQuery]);
+
+  function selectCategory(c: { id: string; name: string }) {
+    set("categoryId", c.id);
+    set("categoryName", c.name);
+    setCategoryQuery("");
+    setCategoryResults([]);
+  }
 
   useEffect(() => {
     if (!speakerQuery.trim()) {
@@ -139,7 +167,7 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
       const payload: Partial<AdminEventInput> = {
         title: form.title,
         subtitle: form.subtitle || null,
-        category: form.category,
+        categoryId: form.categoryId,
         location: form.location,
         venue: form.venue || null,
         description: form.description,
@@ -195,7 +223,40 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Category</label>
-            <input required value={form.category} onChange={(e) => set("category", e.target.value)} className={FIELD_CLASS} />
+            <div className="relative">
+              <input
+                required
+                value={categoryQuery || form.categoryName}
+                onChange={(e) => {
+                  setCategoryQuery(e.target.value);
+                  set("categoryName", "");
+                  set("categoryId", "");
+                }}
+                placeholder="Type to search categories..."
+                className={FIELD_CLASS}
+              />
+              {categoryQuery.trim() && (
+                <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-line bg-white shadow-lg">
+                  {categoryResults.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => selectCategory(c)}
+                      className="flex w-full items-center px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface"
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCreatingCategory(true)}
+                    className="w-full border-t border-line px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-primary-50"
+                  >
+                    + Create new category &ldquo;{categoryQuery.trim()}&rdquo;
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Location</label>
@@ -329,6 +390,18 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
           onSaved={(s) => {
             setCreatingSpeaker(false);
             attachSpeaker({ id: s.id, name: s.name, avatarUrl: s.avatarUrl });
+          }}
+        />
+      )}
+
+      {creatingCategory && (
+        <CategoryFormModal
+          category={null}
+          initialName={categoryQuery.trim()}
+          onClose={() => setCreatingCategory(false)}
+          onSaved={(c) => {
+            setCreatingCategory(false);
+            selectCategory(c);
           }}
         />
       )}
