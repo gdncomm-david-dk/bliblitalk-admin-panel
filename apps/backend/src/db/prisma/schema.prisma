@@ -92,6 +92,14 @@ model Speaker {
   events      Event[]  @relation("EventSpeakers")
 }
 
+model EventCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.Citext
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  events    Event[]
+}
+
 model Event {
   id                   String         @id @default(cuid())
   slug                 String         @unique
@@ -102,7 +110,8 @@ model Event {
   // Small poster/card image for list views; falls back to bannerUrl when unset.
   thumbnailUrl         String?
   description          String
-  category             String
+  categoryId           String
+  category             EventCategory  @relation(fields: [categoryId], references: [id])
   tags                 String[]       @default([])
   location             String
   startsAt             DateTime
