@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
 import { createApp } from "../../app";
 import { prisma } from "../../db/client";
 
 const TEST_SLUG_PREFIX = "admin-crud-test-";
+let technologyCategoryId: string;
 
 async function purgeSyntheticEvents() {
   await prisma.event.deleteMany({ where: { slug: { startsWith: TEST_SLUG_PREFIX } } });
@@ -14,7 +15,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
   return {
     title: `Admin CRUD Test Event ${Date.now()}`,
     description: "test",
-    category: "Technology",
+    categoryId: technologyCategoryId,
     location: "Online",
     startsAt: future,
     endsAt: future,
@@ -26,6 +27,11 @@ function validPayload(overrides: Record<string, unknown> = {}) {
 // Integration — requires a running, seeded Postgres.
 describe("admin events CRUD", () => {
   const app = createApp();
+
+  beforeAll(async () => {
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { name: "Technology" } });
+    technologyCategoryId = category.id;
+  });
 
   beforeEach(purgeSyntheticEvents);
   afterAll(purgeSyntheticEvents);

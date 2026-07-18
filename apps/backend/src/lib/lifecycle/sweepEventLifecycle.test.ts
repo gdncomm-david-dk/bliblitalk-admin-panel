@@ -26,7 +26,7 @@ async function makeEvent(overrides: EventOverrides) {
       slug: `${PREFIX}${now}-${Math.round(Math.random() * 100000)}`,
       title: "Lifecycle sweep test",
       description: "x",
-      category: "Technology",
+      category: { connect: { name: "Technology" } },
       location: "Online",
       startsAt: overrides.startsAt ?? new Date(now + 86400000),
       endsAt: overrides.endsAt ?? new Date(now + 90000000),

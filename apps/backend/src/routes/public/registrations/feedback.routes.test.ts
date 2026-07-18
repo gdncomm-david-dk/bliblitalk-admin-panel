@@ -44,7 +44,7 @@ describe("portal feedback + certificate download", () => {
         slug: TEST_SLUG,
         title: "Feedback Test Event",
         description: "test",
-        category: "Technology",
+        category: { connect: { name: "Technology" } },
         location: "Online",
         startsAt: new Date(),
         endsAt: new Date(),

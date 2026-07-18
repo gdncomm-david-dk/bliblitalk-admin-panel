@@ -26,7 +26,7 @@ describe("admin certificates", () => {
         slug: TEST_SLUG,
         title: "Certificates Test Event",
         description: "test",
-        category: "Technology",
+        category: { connect: { name: "Technology" } },
         location: "Online",
         startsAt: new Date(),
         endsAt: new Date(),
