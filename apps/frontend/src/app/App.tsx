@@ -16,6 +16,7 @@ import { RegistrantsPage } from "../pages/registrants/RegistrantsPage";
 import { RolesPage } from "../pages/roles/RolesPage";
 import { MarketingEmailPage } from "../pages/marketing/MarketingEmailPage";
 import { SpeakersPage } from "../pages/speakers/SpeakersPage";
+import { CategoriesPage } from "../pages/categories/CategoriesPage";
 
 export function App() {
   return (
@@ -36,6 +37,7 @@ export function App() {
           <Route path="events/new" element={<EventFormPage />} />
           <Route path="events/:id" element={<EventWorkspacePage />} />
           <Route path="speakers" element={<SpeakersPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="speed-dating-settings" element={<SpeedDatingSettingsPage />} />
           <Route path="feedback-settings" element={<FeedbackSettingsPage />} />
           <Route path="certificate-settings" element={<CertificateSettingsPage />} />
