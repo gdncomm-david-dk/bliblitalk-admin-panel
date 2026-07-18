@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import type { AdminEventInput, EventDTO } from "@repo/shared-types";
+import type { AdminCategoryDTO, AdminEventInput, EventDTO } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../services/api";
+import { CategoryFormModal } from "../../components/CategoryFormModal";
 
 const FIELD_CLASS =
   "h-10 w-full rounded-lg bg-surface px-3.5 text-sm text-ink placeholder:text-muted/70 outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/30";
@@ -10,7 +11,8 @@ const TEXTAREA_CLASS = `${FIELD_CLASS} h-24 resize-none py-2`;
 interface FormState {
   title: string;
   subtitle: string;
-  category: string;
+  categoryId: string;
+  categoryName: string;
   location: string;
   venue: string;
   description: string;
@@ -28,7 +30,8 @@ interface FormState {
 const EMPTY: FormState = {
   title: "",
   subtitle: "",
-  category: "",
+  categoryId: "",
+  categoryName: "",
   location: "",
   venue: "",
   description: "",
@@ -49,6 +52,30 @@ export function EventFormPage() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [categoryResults, setCategoryResults] = useState<AdminCategoryDTO[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  useEffect(() => {
+    if (!categoryQuery.trim()) {
+      setCategoryResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .get<AdminCategoryDTO[]>(`/admin/categories?q=${encodeURIComponent(categoryQuery.trim())}`)
+        .then(setCategoryResults)
+        .catch(() => setCategoryResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [categoryQuery]);
+
+  function selectCategory(c: { id: string; name: string }) {
+    set("categoryId", c.id);
+    set("categoryName", c.name);
+    setCategoryQuery("");
+    setCategoryResults([]);
+  }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -62,7 +89,7 @@ export function EventFormPage() {
       const payload: AdminEventInput = {
         title: form.title,
         subtitle: form.subtitle || null,
-        category: form.category,
+        categoryId: form.categoryId,
         location: form.location,
         venue: form.venue || null,
         description: form.description,
@@ -115,12 +142,40 @@ export function EventFormPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Category</label>
-            <input
-              required
-              value={form.category}
-              onChange={(e) => set("category", e.target.value)}
-              className={FIELD_CLASS}
-            />
+            <div className="relative">
+              <input
+                required
+                value={categoryQuery || form.categoryName}
+                onChange={(e) => {
+                  setCategoryQuery(e.target.value);
+                  set("categoryName", "");
+                  set("categoryId", "");
+                }}
+                placeholder="Type to search categories..."
+                className={FIELD_CLASS}
+              />
+              {categoryQuery.trim() && (
+                <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-line bg-white shadow-lg">
+                  {categoryResults.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => selectCategory(c)}
+                      className="flex w-full items-center px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface"
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCreatingCategory(true)}
+                    className="w-full border-t border-line px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-primary-50"
+                  >
+                    + Create new category &ldquo;{categoryQuery.trim()}&rdquo;
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Location</label>
@@ -236,6 +291,18 @@ export function EventFormPage() {
           {saving ? "Saving…" : "Create Event"}
         </button>
       </form>
+
+      {creatingCategory && (
+        <CategoryFormModal
+          category={null}
+          initialName={categoryQuery.trim()}
+          onClose={() => setCreatingCategory(false)}
+          onSaved={(c) => {
+            setCreatingCategory(false);
+            selectCategory(c);
+          }}
+        />
+      )}
     </div>
   );
 }
