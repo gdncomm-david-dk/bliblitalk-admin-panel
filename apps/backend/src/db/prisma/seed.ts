@@ -15,6 +15,14 @@ async function main() {
   await prisma.speaker.deleteMany();
   await prisma.user.deleteMany();
 
+  // ---- Categories ----
+  // Owned by the seed itself (not just the migration's one-time INSERT) so this
+  // file is self-contained on any freshly-migrated database.
+  const CATEGORY_NAMES = ["Leadership", "Self Development", "Technology", "Career Growth", "Design"];
+  for (const name of CATEGORY_NAMES) {
+    await prisma.eventCategory.upsert({ where: { name }, update: {}, create: { name } });
+  }
+
   // ---- User ----
   const passwordHash = bcrypt.hashSync("password123", 10);
   const demo = await prisma.user.create({
