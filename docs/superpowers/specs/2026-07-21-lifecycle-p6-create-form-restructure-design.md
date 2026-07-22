@@ -52,11 +52,16 @@ create and edit time.
 
 ## Decisions (locked with the owner)
 
-1. **Scope = create + edit parity, inline sections, no shared-component extraction.** Both
-   `EventFormPage` and `OverviewTab` get the same three-section layout, rendered inline in each file.
-   Some section markup and the combobox blocks are duplicated across the two files — **accepted**.
-   (The larger shared-component refactor — `<FormSection>`, `<CategoryCombobox>`, `<SpeakerCombobox>`
-   — was explicitly declined to keep P6 focused.)
+1. **Scope = create + edit parity, inline sections, no shared-component extraction.** The **create
+   form** (`EventFormPage`) is one form and gets the full three-section layout. The **edit
+   experience is split across two workspace tabs** — Overview (identity + schedule + speakers/images)
+   and [Settings](../../../apps/frontend/src/pages/events/workspace/SettingsTab.tsx) (capacity,
+   waiting list, show-remaining-seats, certificate, feedback, display config) — so "parity" means the
+   two genuinely un-editable-after-creation fields (`registrationOpensAt`, `selectionMode`) become
+   editable in the tab that already owns their concern, **without duplicating any control across
+   tabs**. Section markup and combobox blocks are duplicated inline across files — **accepted**. (The
+   shared-component refactor — `<FormSection>`, `<CategoryCombobox>`, `<SpeakerCombobox>` — was
+   explicitly declined to keep P6 focused.)
 2. **Behavior controls are decoupled.** `selectionMode` becomes an explicit control; `showRemainingSeats`
    is reworded to a pure display toggle; `waitingListEnabled` gets a visible control on the create
    form. This realizes roadmap decision #6 (`selectionMode` and `showRemainingSeats` are separate
@@ -70,7 +75,11 @@ create and edit time.
 
 ## Design
 
-### Section layout (both forms)
+### Section layout (create form)
+
+The three sections below are the **create form** (`EventFormPage`). The edit side reuses the same
+Identity/Schedule grouping and controls but split across the Overview and Settings tabs — see
+**New-field wiring** below.
 
 Three stacked sections. Each is a small header — a `text-sm font-semibold text-ink` title plus an
 optional one-line `text-xs text-muted` helper — above the existing
@@ -116,14 +125,27 @@ each file (no new component).
   `selectionMode: form.selectionMode`, and keep `waitingListEnabled: form.waitingListEnabled` (now
   driven by the new checkbox).
 
-**Edit form (`OverviewTab`):**
+**Edit side — Overview tab (`OverviewTab`):** owns identity + schedule.
+- Group the existing fields under **Identity** and **Schedule** section headers (no Behavior section —
+  Settings owns behavior; adding one here would duplicate Settings' controls).
 - Extend `FormState`/`fromEvent()` with `registrationOpensAt` (from `toInputDateTime(e.registrationOpensAt)`)
-  and `selectionMode` (from `e.selectionMode`).
-- Add the same Schedule "Registration Opens At" field and Behavior "Selection Mode" radio.
-- Extend the PATCH payload with `registrationOpensAt` and `selectionMode`.
-- `EventDTO` **already exposes** both fields — `selectionMode: z.nativeEnum(SelectionMode)`
-  (`schemas.ts:236`) and `registrationOpensAt: z.string().nullable()` (`schemas.ts:237`) — so
-  `fromEvent()` can hydrate them directly with no DTO/mapper change. P6 is strictly frontend-only.
+  and add the Schedule "Registration Opens At" field.
+- Extend the PATCH payload with `registrationOpensAt`; call `validateEventDates` in `onSubmit`.
+- Capacity stays where it is today (Overview already edits it; that pre-existing Overview/Settings
+  capacity overlap is out of scope).
+
+**Edit side — Settings tab (`SettingsTab`):** owns behavior.
+- Add an explicit **Selection Mode** radio (FCFS / Curated), extending its local state + PATCH payload
+  with `selectionMode` (hydrated from `event.selectionMode`).
+- Replace the conflated "Shortlist required (hides remaining-seats counter…)" checkbox
+  (`SettingsTab.tsx:19,75-77` — currently `shortlistRequired = !showRemainingSeats`) with a direct
+  **"Show remaining seat count to participants"** display toggle bound to `showRemainingSeats`. This
+  applies the same decouple (Decision #2) on the edit side.
+- Leave capacity / waiting list / certificate / feedback / display config unchanged.
+
+`EventDTO` **already exposes** both new fields — `selectionMode: z.nativeEnum(SelectionMode)`
+(`schemas.ts:236`) and `registrationOpensAt: z.string().nullable()` (`schemas.ts:237`) — so both tabs
+hydrate directly with no DTO/mapper change. P6 is strictly frontend-only.
 
 ### Client-side datetime validation
 
@@ -144,9 +166,12 @@ The same helper is used by both forms.
   helper + its unit test).
 - **No shared-component extraction** (declined in Decision #1).
 - **The lifecycle action bar, publish/transition flow, and Participants/ops views** are untouched.
-- **Module toggles on the edit tab:** hasSpeedDating/enableCertificate/enableFeedback remain managed
-  on the Settings tab; P6 does not move or duplicate them onto the Overview tab. Only `selectionMode`
-  and `registrationOpensAt` are added to Overview for edit parity.
+- **No control is duplicated across workspace tabs.** Behavior fields (capacity, waiting list,
+  show-remaining-seats, certificate, feedback, `selectionMode`) live on the Settings tab; schedule +
+  identity live on the Overview tab. `registrationOpensAt` is added to Overview (Schedule);
+  `selectionMode` is added to Settings (behavior). Neither is added to both.
+- **Module toggles** (hasSpeedDating/enableCertificate/enableFeedback) keep their current homes — on
+  the create form and the Settings tab — and are not moved onto the Overview tab.
 
 ## Verification
 
@@ -154,8 +179,11 @@ The same helper is used by both forms.
 - **Typecheck:** `pnpm --filter @repo/frontend exec tsc --noEmit` clean.
 - **Browser (admin :5184, backend :4001):** create an event exercising every new field (upload
   banner/thumbnail, attach a speaker, set registrationOpensAt, pick Curated), confirm it persists and
-  the created event's detail/workspace reflect all values; open the Overview tab and confirm
-  `selectionMode` + `registrationOpensAt` are pre-filled and editable; trigger the datetime validation
-  by entering an out-of-order date and confirm submit is blocked with an inline message.
+  the created event's detail/workspace reflect all values; open the **Overview tab** and confirm
+  `registrationOpensAt` is pre-filled and editable and the Identity/Schedule sections render; open the
+  **Settings tab** and confirm the `selectionMode` radio is pre-filled and the "Show remaining seat
+  count" toggle reflects `showRemainingSeats` (round-trips correctly); trigger the datetime validation
+  on both the create form and the Overview tab by entering an out-of-order date and confirm submit is
+  blocked with an inline message.
 - **Portal (:5183) sanity:** confirm a Curated event with "show remaining seats" off still renders
   correctly (no regression to the P4 badge/seat-visibility behavior).
