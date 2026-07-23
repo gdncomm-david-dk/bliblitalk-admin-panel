@@ -112,7 +112,7 @@ async function main() {
       startsAt: notLostStartsAt,
       endsAt: t("2026-08-13T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       hasSpeedDating: true,
       featured: true,
       registrationDeadline: t("2026-08-11T23:59:00"),
@@ -261,7 +261,7 @@ async function main() {
       startsAt: learningStartsAt,
       endsAt: t("2026-09-17T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       ...defaultMeta(learningStartsAt),
       speakers: { connect: [{ id: lilyane.id }, { id: josephine.id }] },
     },
@@ -280,7 +280,7 @@ async function main() {
       startsAt: aiStartsAt,
       endsAt: t("2026-10-02T20:30:00"),
       capacity: 200,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       ...defaultMeta(aiStartsAt),
       speakers: { connect: [{ id: rangga.id }] },
     },
@@ -299,7 +299,7 @@ async function main() {
       startsAt: influenceStartsAt,
       endsAt: t("2026-10-15T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       // Shortlist-only: seat count hidden; every registrant waits to be shortlisted.
       showRemainingSeats: false,
@@ -319,7 +319,7 @@ async function main() {
       startsAt: futureOfWorkStartsAt,
       endsAt: t("2026-10-29T20:30:00"),
       capacity: 500,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       ...defaultMeta(futureOfWorkStartsAt),
     },
@@ -336,7 +336,7 @@ async function main() {
       startsAt: mindsetStartsAt,
       endsAt: t("2026-11-05T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       ...defaultMeta(mindsetStartsAt),
     },
@@ -447,9 +447,62 @@ async function main() {
     data: { ownerId: eventAdmin.id },
   });
   await prisma.event.updateMany({
-    where: { status: "PUBLISHED" },
+    where: { status: "REGISTRATION_OPEN" },
     data: { publishedAt: t("2026-05-01T09:00:00") },
   });
+
+  // ---- Lifecycle backfill: one synthetic EventStatusHistory row per non-DRAFT
+  // seed event, mirroring the P7 migration's Steps B/C so local dev stays
+  // consistent across every reseed (seed.ts wipes and recreates all events).
+  const registrationOpenEvents = await prisma.event.findMany({
+    where: { status: "REGISTRATION_OPEN" },
+    select: { id: true, publishedAt: true },
+  });
+  const completedEvents = await prisma.event.findMany({
+    where: { status: "COMPLETED" },
+    select: { id: true, endsAt: true, autoCompleteAfterMinutes: true },
+  });
+
+  for (const e of registrationOpenEvents) {
+    await prisma.event.update({
+      where: { id: e.id },
+      data: { statusChangedAt: e.publishedAt ?? new Date() },
+    });
+  }
+  for (const e of completedEvents) {
+    await prisma.event.update({
+      where: { id: e.id },
+      data: { statusChangedAt: dayjs(e.endsAt).add(e.autoCompleteAfterMinutes, "minute").toDate() },
+    });
+  }
+
+  await prisma.eventStatusHistory.createMany({
+    data: [
+      ...registrationOpenEvents.map((e) => ({
+        id: `histbf_${e.id}`,
+        eventId: e.id,
+        fromStatus: null,
+        toStatus: "REGISTRATION_OPEN",
+        actorType: "SYSTEM",
+        actorId: null,
+        reason: "backfill",
+        sideEffectsStatus: "NONE",
+        createdAt: e.publishedAt ?? new Date(),
+      })),
+      ...completedEvents.map((e) => ({
+        id: `histbf_${e.id}`,
+        eventId: e.id,
+        fromStatus: null,
+        toStatus: "COMPLETED",
+        actorType: "SYSTEM",
+        actorId: null,
+        reason: "backfill",
+        sideEffectsStatus: "DONE",
+        createdAt: dayjs(e.endsAt).add(e.autoCompleteAfterMinutes, "minute").toDate(),
+      })),
+    ],
+  });
+
   // Demo the seat-visibility toggle: hide the remaining-seats counter on one event.
   await prisma.event.update({
     where: { id: learning.id },
