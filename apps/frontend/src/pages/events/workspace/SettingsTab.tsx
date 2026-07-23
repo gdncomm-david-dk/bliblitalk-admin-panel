@@ -1,8 +1,13 @@
 import { useState } from "react";
-import type { AdminEventInput, EventDisplayConfig, EventDTO } from "@repo/shared-types";
+import type { AdminEventInput, EventDisplayConfig, EventDTO, SelectionMode } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
 import { useToastStore } from "../../../store/toastStore";
 import { FIELD_CLASS } from "./fieldStyles";
+
+const SELECTION_OPTIONS = [
+  { value: "FCFS", label: "First-come-first-served", hint: "Registrations are auto-approved up to capacity." },
+  { value: "CURATED", label: "Curated (admin shortlists)", hint: "Registrations wait for admin shortlisting." },
+] as const;
 
 const DISPLAY_TOGGLES: { key: keyof EventDisplayConfig; label: string }[] = [
   { key: "pastEvent", label: "Display as Past Event" },
@@ -16,7 +21,8 @@ const DISPLAY_TOGGLES: { key: keyof EventDisplayConfig; label: string }[] = [
 export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () => void }) {
   const [capacity, setCapacity] = useState(String(event.capacity));
   const [waitingListEnabled, setWaitingListEnabled] = useState(event.waitingListEnabled);
-  const [shortlistRequired, setShortlistRequired] = useState(!event.showRemainingSeats);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(event.selectionMode);
+  const [showRemainingSeats, setShowRemainingSeats] = useState(event.showRemainingSeats);
   const [enableCertificate, setEnableCertificate] = useState(event.enableCertificate);
   const [enableFeedback, setEnableFeedback] = useState(event.enableFeedback);
   const [displayConfig, setDisplayConfig] = useState<EventDisplayConfig>(event.displayConfig);
@@ -35,7 +41,8 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
       const payload: Partial<AdminEventInput> = {
         capacity: Number(capacity) || 0,
         waitingListEnabled,
-        showRemainingSeats: !shortlistRequired,
+        showRemainingSeats,
+        selectionMode,
         enableCertificate,
         enableFeedback,
         displayConfig,
@@ -66,14 +73,34 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
           </div>
         </div>
 
+        <div className="mt-4">
+          <label className="mb-1 block text-xs font-semibold text-muted">Selection Mode</label>
+          <div className="flex gap-3">
+            {SELECTION_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex-1 cursor-pointer rounded-lg border p-3 transition ${
+                  selectionMode === opt.value ? "border-primary bg-primary-50" : "border-line bg-surface hover:border-primary/40"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input type="radio" name="selectionMode" value={opt.value} checked={selectionMode === opt.value} onChange={() => setSelectionMode(opt.value)} />
+                  <span className="text-sm font-semibold text-ink">{opt.label}</span>
+                </span>
+                <span className="mt-1 block pl-6 text-xs text-muted">{opt.hint}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-4 space-y-2">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={waitingListEnabled} onChange={(e) => setWaitingListEnabled(e.target.checked)} />
             Waitlist enabled
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={shortlistRequired} onChange={(e) => setShortlistRequired(e.target.checked)} />
-            Shortlist required (hides remaining-seats counter, every registrant waits for review)
+            <input type="checkbox" checked={showRemainingSeats} onChange={(e) => setShowRemainingSeats(e.target.checked)} />
+            Show remaining seat count to participants
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={enableCertificate} onChange={(e) => setEnableCertificate(e.target.checked)} />
