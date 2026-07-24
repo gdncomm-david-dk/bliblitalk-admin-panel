@@ -25,7 +25,7 @@ Last audited: 2026-07-24
 
 ## Blocking
 
-### SEC-001 — Mock Microsoft SSO is a full, unauthenticated Admin CMS takeover  [OPEN]
+### SEC-001 — Mock Microsoft SSO is a full, unauthenticated Admin CMS takeover  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend + frontend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:**
@@ -35,63 +35,63 @@ Last audited: 2026-07-24
   - `apps/frontend/src/pages/LoginPage.tsx:22,44-58` (Microsoft button calls the mock endpoint unconditionally, not gated behind `import.meta.env.DEV`)
 - **Why blocking:** Verified by direct code read (not just the audit's own claim). Submitting `{ email: "superadmin@gdn-commerce.com" }` with no password, token, or signature to `/api/auth/microsoft` returns a valid, real 7-day session cookie for the Super Admin account. There is no `config.isProd` gate on the route, and the frontend ships this as a normal, always-visible "Continue with Microsoft" button. This is a complete authentication bypass for the entire Admin CMS, which holds employee PII platform-wide.
 - **Suggested fix:** Either (a) implement real Entra ID/OIDC token verification server-side before this ships to any shared environment, or (b) gate the route and the frontend button behind `!config.isProd` / a reviewed feature flag and return 404/hide the UI in production until (a) lands.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — option (b): `/api/auth/microsoft` now 404s under `config.isProd` via `mockProviderGate` (`auth.routes.ts`), and the frontend Microsoft button/divider is wrapped in `{import.meta.env.DEV && (...)}` (`LoginPage.tsx`), confirmed stripped from the production bundle via `vite build`. Real Entra ID/OIDC verification remains open as GLG-001 (policy-compliance, distinct from this exploitability finding). Regression test: `auth.routes.test.ts` ("SEC-001/SEC-002: mock providers are blocked in production"). Commit `584b09d`.
 
-### SEC-002 — Mock Google sign-in grants any participant session with no credential  [OPEN]
+### SEC-002 — Mock Google sign-in grants any participant session with no credential  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:** `apps/backend/src/routes/public/auth/auth.routes.ts:40-54` (`POST /api/auth/google`)
 - **Why blocking:** Same root pattern as SEC-001, scoped to the participant identity provider — verified by direct read. Submitting any registered participant's email returns `{registered:true, user}` and sets a valid session cookie, no password/token check.
 - **Suggested fix:** Same remediation pattern as SEC-001, scoped to the Google identity provider (real OAuth ID-token verification, or a production gate until it lands).
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — same `mockProviderGate` as SEC-001: `/api/auth/google` 404s under `config.isProd`. Real OAuth ID-token verification remains open as GLG-001. Regression test: `auth.routes.test.ts` ("SEC-001/SEC-002: mock providers are blocked in production"). Commit `584b09d`.
 
-### SEC-003 — JWT signing secret silently falls back to a public placeholder value  [OPEN]
+### SEC-003 — JWT signing secret silently falls back to a public placeholder value  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix (hardcoded-secret)
 - **Tier rule matched:** `hardcoded-secret` → BLOCKING
 - **Location:** `apps/backend/src/config.ts:7` — `jwtSecret: process.env.ADMIN_JWT_SECRET ?? "dev-only-change-me"`
 - **Why blocking:** Verified by direct read. If `ADMIN_JWT_SECRET` is ever unset or empty in a deployed environment, the server boots normally and signs/verifies every session token with a publicly-known literal string — anyone could forge a SUPER_ADMIN token. No startup check exists anywhere in `index.ts`/`app.ts`/`config.ts` that fails fast on this.
 - **Suggested fix:** At process start, validate `ADMIN_JWT_SECRET` is present, has sufficient entropy (≥32 bytes), and is not a known placeholder; `process.exit(1)` with a clear log line otherwise. Remove the fallback default entirely.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — added `resolveJwtSecret()` (`config.ts`): throws at startup in production if `ADMIN_JWT_SECRET` is unset, under 32 characters, or a known placeholder; dev/test keeps the `dev-only-change-me` fallback. Regression tests: `config.test.ts` (6 cases). Commit `ba7e22c`.
 
-### SEC-004 — Hardcoded password on seeded Super Admin / Event Admin accounts  [OPEN]
+### SEC-004 — Hardcoded password on seeded Super Admin / Event Admin accounts  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix (hardcoded-secret)
 - **Tier rule matched:** `hardcoded-secret` → BLOCKING
 - **Location:** `apps/backend/src/db/prisma/seed.ts` (seeds `superadmin@gdn-commerce.com`, `eventadmin@gdn-commerce.com`, and a demo participant with the literal password `password123`, committed to source)
 - **Why blocking:** Verified by direct grep on the file. `seed.ts` has no environment gate; if ever run against a shared/staging/production database, it plants a publicly-known password on a Super Admin account with access to all employee PII.
 - **Suggested fix:** Generate a random password per seeded account at seed-time (print once to the console, never commit it), or require an explicit `SEED_ADMIN_PASSWORD` env var with no in-repo fallback. Document that this script must never target a non-ephemeral database.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — `seed.ts` now sources the password via `resolveSeedPassword()` (`seedConfig.ts`), which throws if `SEED_ADMIN_PASSWORD` is unset; documented in `.env.example`. No literal password remains in source. Regression tests: `seedConfig.test.ts` (3 cases). Commit `c0cebc6`.
 
-### SEC-005 — No rate limiting anywhere in the API  [OPEN]
+### SEC-005 — No rate limiting anywhere in the API  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:** `apps/backend/src/app.ts` (no rate-limit middleware mounted); `apps/backend/package.json` (no `express-rate-limit` or equivalent dependency)
 - **Why blocking:** Confirmed absent from `app.ts` and `package.json`. `/api/auth/login`, `/register`, `/google`, and the SEC-001/002 bypass endpoints can be hit at unlimited request rates — unrestricted brute force against bcrypt hashes and unrestricted email enumeration via `/auth/google`'s registered/unregistered oracle and `/auth/register`'s `EMAIL_TAKEN` 409.
 - **Suggested fix:** Add a per-IP + per-identifier limiter in front of `/api/auth/*` at minimum (e.g. `express-rate-limit`), mounted before the auth router, returning 429 with `RateLimit-*` headers.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — added `createAuthRateLimiter()` (`middleware/rateLimit.ts`, factory so each `createApp()` gets an independent store), mounted in front of `/api/auth` in `app.ts`: 50 requests / 15 min per IP, 429 with `RateLimit-*` headers. Regression tests: `rateLimit.test.ts` (2 cases). Commit `108b670`.
 
-### SEC-006 — Session cookie (JWT) is logged in cleartext on every request  [OPEN]
+### SEC-006 — Session cookie (JWT) is logged in cleartext on every request  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:** `apps/backend/src/app.ts:35` — `app.use(pinoHttp({ logger }))`, no `redact` option
 - **Why blocking:** Confirmed by direct read — `pino-http`'s default request serializer logs `req.headers` verbatim, including `Cookie`. Every request's session JWT (role/email claims) is written to application logs in cleartext; anyone with log access can lift and replay any user's session, including admins.
 - **Suggested fix:** `pino-http({ logger, redact: ["req.headers.cookie", "req.headers.authorization"] })`, or a custom serializer that strips those headers.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — `createRequestLogger()` (`app.ts`) now passes `redact: LOG_REDACT_PATHS` (`req.headers.cookie`, `req.headers.authorization`) to `pino-http`. Regression test: `app.test.ts` (asserts a live session cookie value never appears in captured log output). Commit `61c4de9`.
 
-### SEC-007 — No session/token revocation on logout, role change, or deactivation  [OPEN]
+### SEC-007 — No session/token revocation on logout, role change, or deactivation  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:** `apps/backend/src/routes/public/auth/auth.routes.ts:120-123` (logout only clears the cookie); `apps/backend/src/routes/admin/adminUsers.service.ts:67-70` (`updateUserRole`); `apps/backend/src/middleware/requireAuth.ts:19-27` (trusts the JWT's role claim, never re-checks the DB)
 - **Why blocking:** A copied-out or leaked JWT (e.g. via SEC-006) stays valid for its full 7-day life regardless of logout. Worse: demoting or removing an admin has no effect on tokens already issued to them — a removed admin keeps their old privilege for up to 7 days.
 - **Suggested fix:** Add a `jti` claim plus a revocation store, or a `tokenVersion` column on `User` bumped on logout/role-change/deactivation and checked in `requireAuth`.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — added `User.tokenVersion` (migration `20260724100000_user_token_version`), embedded in the JWT and checked against the DB on every `requireAuth` call; bumped on logout (`auth.routes.ts`) and role change (`adminUsers.service.ts#updateUserRole`). Regression tests: `auth.routes.test.ts` ("logout revokes the session"), `adminUsers.routes.test.ts` ("role change revokes their already-issued session"). Commit `f522d67`.
 
-### SEC-008 — Unscoped PII read: any Event Admin can list every user in the system  [OPEN]
+### SEC-008 — Unscoped PII read: any Event Admin can list every user in the system  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
 - **Tier rule matched:** `must-fix` → BLOCKING
 - **Location:** `apps/backend/src/routes/admin/adminUsers.service.ts:18-64` (`listRegistrants`), reached via `apps/backend/src/routes/admin/adminUsers.routes.ts:16` (`GET /admin/users`, gated only by `Permission.USER_MANAGE`)
 - **Why blocking:** Verified by direct read of both the route (confirmed `requirePermission(Permission.USER_MANAGE)` only, no event scoping) and the service (`prisma.user.findMany` with no admin-ownership filter). `USER_MANAGE` is granted to `EVENT_ADMIN`, so an admin scoped to one event can bulk-read name/email/phone/institution/department/position/YoE for every user platform-wide. Every comparable read path elsewhere in the codebase (`adminDashboard.service.ts`, `adminAnalytics.service.ts`, `adminEvents.service.ts`) correctly scopes to the admin's own events — this is the one exception.
 - **Suggested fix:** Scope `listRegistrants()` for `EVENT_ADMIN` to users with a registration on an event that admin owns (mirror the pattern already used elsewhere), or split the permission so unscoped access requires a role above `EVENT_ADMIN`.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — `listRegistrants()` now applies the same `isEventScoped(role)` + `admins: { some: { id } }` filter as `adminDashboard.service.ts`/`adminAnalytics.service.ts`/`adminEvents.service.ts` for `EVENT_ADMIN` and other event-scoped roles; unscoped roles (SUPER_ADMIN, etc.) are unaffected. Regression test: `adminUsers.routes.test.ts` ("SEC-008: scopes an event admin to users registered on that admin's own events"). Commit `962da99`.
 
 ### GLG-001 — Login method is neither approved SSO nor verified Google OAuth  [OPEN]
 - **Source:** `golive-gate/adoption-checks`, non-approved-auth
@@ -223,13 +223,13 @@ Last audited: 2026-07-24
 - **Suggested fix:** Raise the admin-account minimum (12+ chars) and/or add a complexity or breached-password check, at minimum for `CreateAdminUserInput`.
 - **Status:** OPEN
 
-### SEC-020 — JWT verification has no explicit algorithm allowlist  [OPEN]
+### SEC-020 — JWT verification has no explicit algorithm allowlist  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/backend/src/routes/public/auth/auth.service.ts:17-24`
 - **Why advisory:** Not currently exploitable (only HS256 is ever used to sign), but pinning `algorithms: ["HS256"]` is a one-line defense against future library/config regressions.
 - **Suggested fix:** Pass `{ algorithms: ["HS256"] }` to `jwt.verify`.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — closed incidentally alongside SEC-007's `auth.service.ts` edit: `jwt.sign`/`jwt.verify` now pin `{ algorithms: ["HS256"] }`. Commit `f522d67`.
 
 ### SEC-021 — Certificate verification code has low entropy (32 bits)  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
