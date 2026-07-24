@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import dayjs from "dayjs";
 import { PrismaClient } from "@prisma/client";
+import { resolveSeedPassword } from "./seedConfig";
 
 const prisma = new PrismaClient();
 
@@ -24,7 +25,7 @@ async function main() {
   }
 
   // ---- User ----
-  const passwordHash = bcrypt.hashSync("password123", 10);
+  const passwordHash = bcrypt.hashSync(resolveSeedPassword(process.env), 10);
   const demo = await prisma.user.create({
     data: {
       email: "demo@gdn-commerce.com",
