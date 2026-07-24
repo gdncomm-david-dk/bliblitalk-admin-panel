@@ -67,7 +67,7 @@ Last audited: 2026-07-24
 - **Location:** `apps/backend/src/app.ts` (no rate-limit middleware mounted); `apps/backend/package.json` (no `express-rate-limit` or equivalent dependency)
 - **Why blocking:** Confirmed absent from `app.ts` and `package.json`. `/api/auth/login`, `/register`, `/google`, and the SEC-001/002 bypass endpoints can be hit at unlimited request rates — unrestricted brute force against bcrypt hashes and unrestricted email enumeration via `/auth/google`'s registered/unregistered oracle and `/auth/register`'s `EMAIL_TAKEN` 409.
 - **Suggested fix:** Add a per-IP + per-identifier limiter in front of `/api/auth/*` at minimum (e.g. `express-rate-limit`), mounted before the auth router, returning 429 with `RateLimit-*` headers.
-- **Status:** FIXED (2026-07-24) — added `createAuthRateLimiter()` (`middleware/rateLimit.ts`, factory so each `createApp()` gets an independent store), mounted in front of `/api/auth` in `app.ts`: 50 requests / 15 min per IP, 429 with `RateLimit-*` headers. Regression tests: `rateLimit.test.ts` (2 cases). Commit `108b670`.
+- **Status:** FIXED (2026-07-24) — added `createAuthRateLimiter()` (`middleware/rateLimit.ts`, factory so each `createApp()` gets an independent store), mounted in front of `/api/auth` in `app.ts`: 50 requests / 15 min per IP, 429 with `RateLimit-*` headers. Regression tests: `rateLimit.test.ts` (2 cases). Commit `108b670`. **Follow-up (144283f):** a re-audit found the limiter's per-IP bucketing was defeated by the documented single-reverse-proxy deployment topology (`k8s/README.md`) — `req.ip` would resolve to the proxy's own address for every client, collapsing everyone into one shared bucket. Added `app.set("trust proxy", 1)`; regression test `app.test.ts` ("SEC-005 follow-up: rate limit buckets by the real client IP...").
 
 ### SEC-006 — Session cookie (JWT) is logged in cleartext on every request  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -75,7 +75,7 @@ Last audited: 2026-07-24
 - **Location:** `apps/backend/src/app.ts:35` — `app.use(pinoHttp({ logger }))`, no `redact` option
 - **Why blocking:** Confirmed by direct read — `pino-http`'s default request serializer logs `req.headers` verbatim, including `Cookie`. Every request's session JWT (role/email claims) is written to application logs in cleartext; anyone with log access can lift and replay any user's session, including admins.
 - **Suggested fix:** `pino-http({ logger, redact: ["req.headers.cookie", "req.headers.authorization"] })`, or a custom serializer that strips those headers.
-- **Status:** FIXED (2026-07-24) — `createRequestLogger()` (`app.ts`) now passes `redact: LOG_REDACT_PATHS` (`req.headers.cookie`, `req.headers.authorization`) to `pino-http`. Regression test: `app.test.ts` (asserts a live session cookie value never appears in captured log output). Commit `61c4de9`.
+- **Status:** FIXED (2026-07-24) — `createRequestLogger()` (`app.ts`) passes `redact: LOG_REDACT_PATHS` to `pino-http`, covering `req.headers.cookie`, `req.headers.authorization`, **and** `res.headers["set-cookie"]`. The response-side redaction was added in a follow-up commit after a re-audit caught that a login/register response's own freshly-issued `Set-Cookie` header still leaked into logs (the request-only fix in `61c4de9` was incomplete). Regression tests: `app.test.ts` ("never writes a request's session cookie to the logs", "SEC-006: never writes a response's session cookie (Set-Cookie) to the logs"). Commits `61c4de9`, `144283f`.
 
 ### SEC-007 — No session/token revocation on logout, role change, or deactivation  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -229,7 +229,7 @@ Last audited: 2026-07-24
 - **Location:** `apps/backend/src/routes/public/auth/auth.service.ts:17-24`
 - **Why advisory:** Not currently exploitable (only HS256 is ever used to sign), but pinning `algorithms: ["HS256"]` is a one-line defense against future library/config regressions.
 - **Suggested fix:** Pass `{ algorithms: ["HS256"] }` to `jwt.verify`.
-- **Status:** FIXED (2026-07-24) — closed incidentally alongside SEC-007's `auth.service.ts` edit: `jwt.sign`/`jwt.verify` now pin `{ algorithms: ["HS256"] }`. Commit `f522d67`.
+- **Status:** FIXED (2026-07-24) — closed incidentally alongside SEC-007's `auth.service.ts` edit: `jwt.sign`/`jwt.verify` now pin `{ algorithms: ["HS256"] }`. Commit `f522d67`. Dedicated regression test added in the re-audit follow-up: `auth.service.test.ts` (signs a token with HS384, asserts `verifyToken` rejects it). Commit `144283f`.
 
 ### SEC-021 — Certificate verification code has low entropy (32 bits)  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -349,4 +349,20 @@ Last audited: 2026-07-24
 - **Location:** `apps/backend/src/db/` (canonical wants `database/`); no top-level `utils/` (utilities live under `lib/shared/`); `config.ts` is a single file rather than a `config/` directory
 - **Why advisory:** Purely cosmetic naming; no functional or security impact.
 - **Suggested fix:** Rename opportunistically if the team wants strict schema conformance; not required.
+- **Status:** OPEN
+
+### SEC-022 — Frontend dev-only login hint hardcodes a real local credential  [OPEN]
+- **Source:** `code-review/audit-security` (backend + frontend re-audit, 2026-07-24), should-fix
+- **Tier rule matched:** `should-fix` → ADVISORY
+- **Location:** `apps/frontend/src/pages/LoginPage.tsx:151-155` — `Demo: superadmin@gdn-commerce.com / password123`, wrapped in `{import.meta.env.DEV && (...)}`
+- **Why advisory:** Verified stripped from the production bundle (`vite build`, matching the SEC-001/002 fix's own verification) — not reachable outside local dev. It is still a literal credential string in source, and it is only accurate because this repo's gitignored `apps/backend/.env` happens to still set `SEED_ADMIN_PASSWORD=password123` (the committed `.env.example` documents a different placeholder, `changeme-for-local-dev`) — so the hint is real today but will silently go stale for anyone who rotates their local `SEED_ADMIN_PASSWORD`.
+- **Suggested fix:** Either remove the literal and point to `.env.example`'s documented variable name instead of a value, or accept as-is (dev-only UX convenience) with a comment noting it must track whatever `SEED_ADMIN_PASSWORD` is locally set to.
+- **Status:** OPEN
+
+### SEC-023 — Rate limiter's in-memory store won't scale across multiple replicas  [OPEN]
+- **Source:** `code-review/audit-security` (backend re-audit, 2026-07-24), should-fix
+- **Tier rule matched:** `should-fix` → ADVISORY
+- **Location:** `apps/backend/src/middleware/rateLimit.ts` — `createAuthRateLimiter()` uses `express-rate-limit`'s default in-memory store
+- **Why advisory:** Not exploitable today — `k8s/README.md`'s "2+ replicas" topology is documented intent only; no manifests are wired yet and nothing is deployed (confirmed local-only). Once real replicas exist, each keeps an independent counter, so effective attacker/legitimate-user capacity multiplies with replica count, quietly weakening the SEC-005 rate limit.
+- **Suggested fix:** Before scaling `bliblitalk-admin` past a single replica, switch `createAuthRateLimiter()` to a shared store (e.g. Redis via `rate-limit-redis`) so the limit is enforced cluster-wide.
 - **Status:** OPEN
