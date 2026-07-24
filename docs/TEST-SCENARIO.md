@@ -15,9 +15,9 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 | Metric | Count |
 |---|---|
 | Total | 24 |
-| Passed | 18 |
+| Passed | 21 |
 | Failed | 0 |
-| Pending | 6 |
+| Pending | 3 |
 | Stale | 0 |
 
 ## Scenarios
@@ -224,7 +224,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Covers: `packages/auth/src/rbac.ts:82-84`
 - Last-verified-commit: —
 
-### TS-021 — Mock SSO/OAuth is acceptable for this go-live, or real Entra ID/Google OAuth must ship first (GLG-001)  [PENDING]
+### TS-021 — Mock SSO/OAuth is acceptable for this go-live, or real Entra ID/Google OAuth must ship first (GLG-001)  [PASSED (2026-07-24, 8017db0, reviewer)]
 - Feature / flow: login-method policy compliance
 - Category: sensitive
 - Verify: human
@@ -232,9 +232,10 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Steps: independent reviewer / Information Security confirms whether shipping with mock (dev-only, prod-gated) SSO/OAuth is acceptable, or whether real provider verification is a go-live blocker
 - Expected: an explicit decision recorded in `docs/REMEDIATION.md` GLG-001 and `PROJECT.md`
 - Covers: `docs/REMEDIATION.md` GLG-001
-- Last-verified-commit: —
+- Last-verified-commit: 8017db0
+- Note: David Kurniawan, acting as the project's named Information Security sign-off, waived this **for the current pre-deployment/dev milestone only** — real SSO/OAuth is still required before an actual production deployment, at which point this finding re-opens. This is the owner's own sign-off, not the separate independent (non-builder) review required by Task 6 for the overall High-risk go-live gate.
 
-### TS-022 — Repo hosting location outside the approved GitHub org (GLG-002)  [PENDING]
+### TS-022 — Repo hosting location outside the approved GitHub org (GLG-002)  [PASSED (2026-07-24, 8017db0, reviewer)]
 - Feature / flow: repo-homing policy compliance
 - Category: sensitive
 - Verify: human
@@ -242,9 +243,10 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Steps: owner decides: migrate to the approved org, or record a formal exception
 - Expected: an explicit decision recorded in `docs/REMEDIATION.md` GLG-002
 - Covers: `docs/REMEDIATION.md` GLG-002
-- Last-verified-commit: —
+- Last-verified-commit: 8017db0
+- Note: decision recorded (migrate to `gdncomm-ops`), which is this scenario's full scope — but the underlying GLG-002 finding stays OPEN in `docs/REMEDIATION.md` until the migration is actually executed (owner action; no `gh` CLI/API token available to the agent). Do not conflate this PASSED status with the migration being complete.
 
-### TS-023 — License exceptions for png-js / caniuse-lite are formally accepted or remediated (DEP-002/DEP-003)  [PENDING]
+### TS-023 — License exceptions for png-js / caniuse-lite are formally accepted or remediated (DEP-002/DEP-003)  [PASSED (2026-07-24, 8017db0, reviewer)]
 - Feature / flow: dependency license policy compliance
 - Category: important
 - Verify: human
@@ -252,7 +254,8 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Steps: owner decides: accept the documented exceptions, or replace the flagged dependencies
 - Expected: an explicit decision recorded in `docs/REMEDIATION.md` DEP-002/DEP-003
 - Covers: `docs/REMEDIATION.md` DEP-002, DEP-003
-- Last-verified-commit: —
+- Last-verified-commit: 8017db0
+- Note: David Kurniawan, acting as the project's named Information Security sign-off, accepted both as documented exceptions (metadata/attribution-only gaps, not actual restrictive licenses).
 
 ### TS-024 — Registration capacity edge case: full event with waitlist disabled  [PENDING]
 - Feature / flow: DESIGN.md §B "Browse & register for an event" — the full/no-waitlist branch
@@ -288,3 +291,6 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - 2026-07-24 · TS-019 · PENDING → PASSED (agent, commit 32ba496)
 - 2026-07-24 · TS-024 · Expected text corrected to 400 `EVENT_FULL` (was 409) to match `events.service.ts:87-88`; remains PENDING — no automated test covers this exact branch
 - 2026-07-24 · TS-008 · remains PENDING — no automated test file exists for the marketing-campaign route (`adminMarketing.routes.test.ts` absent)
+- 2026-07-24 · TS-021 · PENDING → PASSED (reviewer, commit 8017db0) · owner/InfoSec sign-off on GLG-001 recorded (waived for pre-deployment milestone only)
+- 2026-07-24 · TS-022 · PENDING → PASSED (reviewer, commit 8017db0) · owner decision on GLG-002 recorded (migrate to gdncomm-ops; execution still pending)
+- 2026-07-24 · TS-023 · PENDING → PASSED (reviewer, commit 8017db0) · owner/InfoSec sign-off on DEP-002/DEP-003 recorded (both waived)
