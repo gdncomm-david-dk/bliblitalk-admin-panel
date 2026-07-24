@@ -18,7 +18,7 @@ adminUsersRoutes.get("/users", requireAuth, requirePermission(Permission.USER_MA
     const search = typeof req.query.search === "string" ? req.query.search : undefined;
     const page = parsePositiveInt(req.query.page);
     const pageSize = parsePositiveInt(req.query.pageSize);
-    const result = await listRegistrants({ search, page, pageSize });
+    const result = await listRegistrants({ search, page, pageSize }, req.userId!, req.userRole!);
     res.json(result);
   } catch (err) {
     next(err);

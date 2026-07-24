@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import type { CreateAdminUserInput, EmploymentType, RegistrantDTO, RegistrantListResult, Role } from "@repo/shared-types";
-import { ADMIN_ROLES } from "@repo/auth";
+import { ADMIN_ROLES, isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 
@@ -14,21 +14,36 @@ export interface ListRegistrantsParams {
   pageSize?: number;
 }
 
-/** Lists every user in the system with contact info and how many events they've joined. */
-export async function listRegistrants(params: ListRegistrantsParams): Promise<RegistrantListResult> {
+/**
+ * Lists users with contact info and how many events they've joined. EVENT_ADMIN is scoped to
+ * users with a registration on an event that admin administers (mirrors getAdminDashboard);
+ * other admin roles see the whole platform. Without this, USER_MANAGE — granted to
+ * EVENT_ADMIN — let any single-event admin bulk-read every user's PII platform-wide.
+ */
+export async function listRegistrants(
+  params: ListRegistrantsParams,
+  requestingAdminId: string,
+  requestingAdminRole: Role,
+): Promise<RegistrantListResult> {
   const page = params.page && params.page > 0 ? Math.floor(params.page) : 1;
   const pageSize =
     params.pageSize && params.pageSize > 0 ? Math.min(Math.floor(params.pageSize), MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
-  const where: Prisma.UserWhereInput = params.search
-    ? {
-        OR: [
-          { name: { contains: params.search, mode: "insensitive" } },
-          { email: { contains: params.search, mode: "insensitive" } },
-          { institution: { contains: params.search, mode: "insensitive" } },
-        ],
-      }
-    : {};
+  const searchFilter: Prisma.UserWhereInput[] = params.search
+    ? [
+        {
+          OR: [
+            { name: { contains: params.search, mode: "insensitive" } },
+            { email: { contains: params.search, mode: "insensitive" } },
+            { institution: { contains: params.search, mode: "insensitive" } },
+          ],
+        },
+      ]
+    : [];
+  const scopeFilter: Prisma.UserWhereInput[] = isEventScoped(requestingAdminRole)
+    ? [{ registrations: { some: { event: { admins: { some: { id: requestingAdminId } } } } } }]
+    : [];
+  const where: Prisma.UserWhereInput = { AND: [...searchFilter, ...scopeFilter] };
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
