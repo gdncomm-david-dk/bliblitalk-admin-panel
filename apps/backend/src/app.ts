@@ -28,6 +28,7 @@ import { adminMarketingRoutes } from "./routes/admin/adminMarketing.routes";
 import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
 import { adminSpeakersRoutes } from "./routes/admin/adminSpeakers.routes";
 import { adminCategoriesRoutes } from "./routes/admin/adminCategories.routes";
+import { createAuthRateLimiter } from "./middleware/rateLimit";
 
 // Every request carries the session cookie in `req.headers.cookie` — redact it (and any
 // Authorization header) so pino-http's default request serializer never writes a live
@@ -68,7 +69,7 @@ export function createApp() {
   // Not gated by either CORS block above — referenced as <img src> by both FE apps.
   app.use("/api/uploads", express.static(UPLOADS_DIR));
 
-  app.use("/api/auth", authRoutes);
+  app.use("/api/auth", createAuthRateLimiter(), authRoutes);
   app.use("/api/public/events", eventsRoutes);
   app.use("/api/public/me", dashboardRoutes);
   app.use("/api/public/me", myEventsRoutes);
