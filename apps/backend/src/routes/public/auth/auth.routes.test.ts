@@ -167,6 +167,22 @@ describe("auth", () => {
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe("NO_ADMIN_ACCOUNT");
   });
+
+  it("SEC-007: logout revokes the session — the same cookie is rejected afterward", async () => {
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "demo@gdn-commerce.com", password: "password123" });
+    const setCookieHeader = (login.headers["set-cookie"] as unknown as string[])[0]!;
+    const cookie = setCookieHeader.split(";")[0]!;
+
+    const stillValid = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(stillValid.status).toBe(200);
+
+    await request(app).post("/api/auth/logout").set("Cookie", cookie);
+
+    const afterLogout = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(afterLogout.status).toBe(401);
+  });
 });
 
 describe("SEC-001/SEC-002: mock providers are blocked in production", () => {

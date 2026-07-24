@@ -69,6 +69,10 @@ model User {
   institution       String?
   yearsOfExperience String?
   passwordHash      String
+  // SEC-007: bumped on logout and on role/employment-type change; requireAuth rejects any
+  // token whose embedded tokenVersion no longer matches this column, so a leaked or
+  // still-cached token stops working immediately instead of staying valid for its full life.
+  tokenVersion  Int            @default(0)
   registrations Registration[]
   certificates  Certificate[]
   feedbacks     Feedback[]

@@ -4,6 +4,7 @@ import { can, type Permission } from "@repo/auth";
 import { config } from "../config";
 import { AppError } from "./error";
 import { verifyToken } from "../routes/public/auth/auth.service";
+import { prisma } from "../db/client";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -15,14 +16,27 @@ declare global {
   }
 }
 
-/** Requires a valid session cookie; sets req.userId + req.userRole or throws 401. */
-export const requireAuth: RequestHandler = (req, _res, next) => {
+/**
+ * Requires a valid session cookie; sets req.userId + req.userRole or throws 401.
+ * SEC-007: also rejects a structurally-valid, unexpired token whose tokenVersion claim no
+ * longer matches the user's current tokenVersion column — the mechanism that makes logout,
+ * role changes, and account deactivation actually revoke already-issued tokens instead of
+ * leaving them valid for their full remaining life.
+ */
+export const requireAuth: RequestHandler = async (req, _res, next) => {
   const token = req.cookies?.[config.cookieName];
   if (!token) return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
   const payload = verifyToken(token);
   if (!payload) return next(new AppError("UNAUTHORIZED", "Invalid session", 401));
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { tokenVersion: true, role: true },
+  });
+  if (!user || user.tokenVersion !== payload.tokenVersion) {
+    return next(new AppError("UNAUTHORIZED", "Session has been revoked", 401));
+  }
   req.userId = payload.sub;
-  req.userRole = payload.role;
+  req.userRole = user.role;
   next();
 };
 

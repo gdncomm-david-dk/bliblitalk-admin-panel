@@ -6,7 +6,8 @@ import { AppError } from "../../../middleware/error";
 import { validate } from "../../../middleware/validate";
 import { requireAuth } from "../../../middleware/requireAuth";
 import { authProvider } from "./MockAuthProvider";
-import { signToken, toUserDTO } from "./auth.service";
+import { signToken, toUserDTO, verifyToken } from "./auth.service";
+import { prisma } from "../../../db/client";
 
 export const authRoutes = Router();
 
@@ -129,7 +130,18 @@ authRoutes.get("/me", requireAuth, async (req, res, next) => {
 });
 
 // POST /auth/logout
-authRoutes.post("/logout", (_req, res) => {
+// SEC-007: bump tokenVersion so the token being logged out can never be replayed after this
+// point (e.g. if it was already leaked or copied elsewhere), not just have its cookie cleared
+// in this one browser. Best-effort: a missing/invalid cookie still clears and returns ok.
+authRoutes.post("/logout", async (req, res) => {
+  const token = req.cookies?.[config.cookieName];
+  const payload = token ? verifyToken(token) : null;
+  if (payload) {
+    await prisma.user.update({
+      where: { id: payload.sub },
+      data: { tokenVersion: { increment: 1 } },
+    });
+  }
   res.clearCookie(config.cookieName, { path: "/" });
   res.json({ ok: true });
 });

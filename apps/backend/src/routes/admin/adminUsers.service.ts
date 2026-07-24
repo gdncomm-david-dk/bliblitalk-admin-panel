@@ -78,9 +78,17 @@ export async function listRegistrants(
   return { items, total };
 }
 
-/** Updates a user's admin role. Callers must already hold Permission.ROLE_MANAGE. */
+/**
+ * Updates a user's admin role. Callers must already hold Permission.ROLE_MANAGE.
+ * SEC-007: bumps tokenVersion so any session already issued to this user (which still carries
+ * the old role claim) is rejected on its very next request instead of keeping the old
+ * privilege level for up to 7 days.
+ */
 export async function updateUserRole(id: string, role: Role): Promise<{ id: string; role: Role }> {
-  const user = await prisma.user.update({ where: { id }, data: { role } });
+  const user = await prisma.user.update({
+    where: { id },
+    data: { role, tokenVersion: { increment: 1 } },
+  });
   return { id: user.id, role: user.role };
 }
 
