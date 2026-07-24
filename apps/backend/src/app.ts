@@ -29,10 +29,19 @@ import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
 import { adminSpeakersRoutes } from "./routes/admin/adminSpeakers.routes";
 import { adminCategoriesRoutes } from "./routes/admin/adminCategories.routes";
 
+// Every request carries the session cookie in `req.headers.cookie` — redact it (and any
+// Authorization header) so pino-http's default request serializer never writes a live
+// session token into application logs.
+export const LOG_REDACT_PATHS = ["req.headers.cookie", "req.headers.authorization"];
+
+export function createRequestLogger(loggerInstance: typeof logger = logger) {
+  return pinoHttp({ logger: loggerInstance, redact: LOG_REDACT_PATHS });
+}
+
 export function createApp() {
   const app = express();
 
-  app.use(pinoHttp({ logger }));
+  app.use(createRequestLogger());
   app.use(express.json());
   app.use(cookieParser());
 
