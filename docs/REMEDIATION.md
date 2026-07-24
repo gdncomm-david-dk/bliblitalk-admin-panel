@@ -93,21 +93,21 @@ Last audited: 2026-07-24
 - **Suggested fix:** Scope `listRegistrants()` for `EVENT_ADMIN` to users with a registration on an event that admin owns (mirror the pattern already used elsewhere), or split the permission so unscoped access requires a role above `EVENT_ADMIN`.
 - **Status:** FIXED (2026-07-24) — `listRegistrants()` now applies the same `isEventScoped(role)` + `admins: { some: { id } }` filter as `adminDashboard.service.ts`/`adminAnalytics.service.ts`/`adminEvents.service.ts` for `EVENT_ADMIN` and other event-scoped roles; unscoped roles (SUPER_ADMIN, etc.) are unaffected. Regression test: `adminUsers.routes.test.ts` ("SEC-008: scopes an event admin to users registered on that admin's own events"). Commit `962da99`.
 
-### GLG-001 — Login method is neither approved SSO nor verified Google OAuth  [OPEN]
+### GLG-001 — Login method is neither approved SSO nor verified Google OAuth  [WAIVED (David Kurniawan, Information Security, 2026-07-24)]
 - **Source:** `golive-gate/adoption-checks`, non-approved-auth
 - **Tier rule matched:** `non-approved-auth` → BLOCKING
 - **Location:** Same code as SEC-001/SEC-002 — `apps/backend/src/routes/public/auth/auth.routes.ts:40-77`
 - **Why blocking:** `PROJECT.md`'s Login Method field permits only Apps Gateway SSO or Company Google OAuth. The current `/auth/microsoft` and `/auth/google` endpoints do not verify any signed token from either provider — they are unauthenticated mocks (see SEC-001/002). This is a distinct policy-compliance finding from the exploitability finding: even a "fixed" mock (e.g. one gated to non-prod) is still not an approved login method for the production go-live gate.
 - **Suggested fix:** Implement real Apps Gateway SSO or a real, server-verified Google OAuth flow before go-live; record the chosen method in `PROJECT.md` Login Method once implemented.
-- **Status:** OPEN
+- **Status:** WAIVED (David Kurniawan, acting as named Information Security sign-off for this project, 2026-07-24) — owner's exact words: "its okay, because its mockup only, but in reality (production) will use real SSO gateway." **Condition of this waiver: covers the current pre-deployment/dev milestone only** (mock is prod-gated, nothing is deployed anywhere yet). This waiver does **not** extend to an actual production deployment — real Apps Gateway SSO / verified Google OAuth must ship before that happens, and this finding must be re-opened and re-verified against the code at that point. See `PROJECT.md` Review Evidence for the corresponding sign-off entry.
 
-### GLG-002 — Repo origin is outside the approved company GitHub org  [OPEN]
+### GLG-002 — Repo origin is outside the approved company GitHub org  [OPEN — migration decided, execution pending]
 - **Source:** `golive-gate/adoption-checks`, non-company-storage
 - **Tier rule matched:** `non-company-storage` → BLOCKING
 - **Location:** `git remote get-url origin` → `https://github.com/davidkurniawan-dev/bliblitalk-admin.git`
 - **Why blocking:** The org's `github-policy.json` (`ops-github` plugin) sets `defaultOrg: "gdncomm-ops"`. This repo (and its sibling `bliblitalk-user-fe`) currently live outside that org. Per `CLAUDE.md`/`AGENTS.md` (scaffolded this session): "The only approved remote is the company-managed GitHub organization... flag it as a policy violation and do not push to it without formal approval."
-- **Suggested fix:** Resolved at `/adopt-vibe` Phase 4 (repo homing) — migrate to the `gdncomm-ops` org via `ops-github`'s `/migrate-github-repo`, or get formal approval to stay outside it. Not yet raised with the project owner as of this audit.
-- **Status:** OPEN
+- **Suggested fix:** **Owner decision recorded 2026-07-24 (David Kurniawan): migrate to `gdncomm-ops` now** — no formal-approval-to-stay-outside path chosen. Execution is on the owner: this environment has no `gh` CLI, GitHub API token, or GitHub-admin tool available, so the agent cannot perform the org transfer itself. Owner to run `gh repo transfer davidkurniawan-dev/bliblitalk-admin gdncomm-ops` (and the same for the sibling `bliblitalk-user-fe`), or use GitHub's web UI (repo Settings → General → Danger Zone → Transfer ownership). Once done, update `origin` here (`git remote set-url origin <new-url>`) and this finding moves to FIXED on re-audit.
+- **Status:** OPEN — decision made, execution pending owner action (not a waiver; this is an actual fix, just not yet performed)
 
 ### DEP-001 — vitest 2.1.9: Critical OSV advisory (arbitrary file read/execute)  [FIXED (2026-07-24)]
 - **Source:** `scan-dependency/scan-deps`, critical-vuln
@@ -117,21 +117,21 @@ Last audited: 2026-07-24
 - **Suggested fix:** Bump `vitest` to ≥3.2.6 (or ≥4.1.0) across all four workspaces.
 - **Status:** FIXED (2026-07-24) — bumped all four workspaces to `^3.2.6` (resolved 3.2.7); full typecheck + test suite verified green in each. Commit `77f3ea2`.
 
-### DEP-002 — png-js: empty/undeclared license metadata (transitive of pdfkit)  [OPEN]
+### DEP-002 — png-js: empty/undeclared license metadata (transitive of pdfkit)  [WAIVED (David Kurniawan, Information Security, 2026-07-24)]
 - **Source:** `scan-dependency/scan-deps`, forbidden-license
 - **Tier rule matched:** `forbidden-license` → BLOCKING
 - **Location:** `node_modules/.pnpm/png-js@1.1.0` (transitive dependency of `pdfkit`, used by the certificate-PDF feature in `apps/backend`)
 - **Why blocking:** Per license policy, empty/undeclared machine-readable license metadata is an automatic P0. Manual inspection of the shipped `LICENSE` file confirms the actual text is MIT — this is a documentation/metadata gap, not an actual restrictive license — but policy requires a recorded exception, not silent acceptance.
 - **Suggested fix:** Record a documented policy exception (metadata gap, verified-MIT-by-inspection) with sign-off, or replace `pdfkit`'s PNG handling with a dependency that declares its license correctly.
-- **Status:** OPEN
+- **Status:** WAIVED (David Kurniawan, acting as named Information Security sign-off for this project, 2026-07-24) — accepted as a metadata/documentation gap only; shipped `LICENSE` text manually verified as MIT, not an actual restrictive license. See `PROJECT.md` Review Evidence for the corresponding sign-off entry.
 
-### DEP-003 — caniuse-lite: license not on the approved/conditional/forbidden lists  [OPEN]
+### DEP-003 — caniuse-lite: license not on the approved/conditional/forbidden lists  [WAIVED (David Kurniawan, Information Security, 2026-07-24)]
 - **Source:** `scan-dependency/scan-deps`, forbidden-license
 - **Tier rule matched:** `forbidden-license` → BLOCKING
 - **Location:** `node_modules/.pnpm/caniuse-lite@1.0.30001805` (transitive of `browserslist`, pulled by autoprefixer/postcss/tailwindcss — build-time only, `apps/frontend` devDependency tree, never shipped to the browser bundle)
 - **Why blocking:** License is `CC-BY-4.0`, not present on any of the org's Accepted/Conditional/Forbidden lists; per policy, an unlisted license defaults to P0. Materially different from the explicitly-forbidden CC-BY-SA licenses (attribution-only, no share-alike/NC clause) and is build-time-only.
 - **Suggested fix:** Get `CC-BY-4.0` added to the org's conditional/allowed license list (recommended, given it's attribution-only and never distributed to end users), or record a documented exception.
-- **Status:** OPEN
+- **Status:** WAIVED (David Kurniawan, acting as named Information Security sign-off for this project, 2026-07-24) — accepted: attribution-only license (no share-alike/NC clause), build-time-only dependency never shipped to the browser bundle. Recommend adding `CC-BY-4.0` to the org's conditional/allowed license list going forward. See `PROJECT.md` Review Evidence for the corresponding sign-off entry.
 
 ## Advisory
 

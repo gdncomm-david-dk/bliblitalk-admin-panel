@@ -105,11 +105,17 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
 
 <!-- (owner input) Who reviewed, when, and the sign-off record (approval email, review notes). Required before go-live for Medium and High risk. -->
 
+- **2026-07-24 — Information Security sign-off (David Kurniawan) — 3 BLOCKING waivers:**
+  - **GLG-001** (login method is not real SSO/OAuth): waived for the current pre-deployment/dev milestone only. Owner's stated condition: "its okay, because its mockup only, but in reality (production) will use real SSO gateway" — real Apps Gateway SSO / verified Google OAuth is still required before any actual production deployment; this finding is re-opened at that point. See `docs/REMEDIATION.md` GLG-001.
+  - **DEP-002** (png-js undeclared license metadata): waived — shipped `LICENSE` manually verified as MIT. See `docs/REMEDIATION.md` DEP-002.
+  - **DEP-003** (caniuse-lite CC-BY-4.0, unlisted): waived — attribution-only, build-time-only dependency. See `docs/REMEDIATION.md` DEP-003.
+- **GLG-002** (repo outside approved GitHub org): not a waiver — owner decided 2026-07-24 to migrate this repo (and `bliblitalk-user-fe`) to the `gdncomm-ops` org. Execution pending owner action (no `gh` CLI/API token available in the agent's environment to do it directly). See `docs/REMEDIATION.md` GLG-002.
+
 ## Security Notes
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
 
-Remediation backlog: docs/REMEDIATION.md — 4 BLOCKING open / 28 ADVISORY open (last audited 2026-07-24).
+Remediation backlog: docs/REMEDIATION.md — 1 BLOCKING open (GLG-002, migration decided/pending) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
 
 ## Hosting Location
 
