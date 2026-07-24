@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { GoogleAuthInput, LoginInput, MicrosoftAuthInput, RegisterInput } from "@repo/shared-types";
 import { isAdminRole } from "@repo/auth";
 import { config } from "../../../config";
@@ -16,6 +16,18 @@ const cookieOptions = {
   secure: config.isProd,
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   path: "/",
+};
+
+// SEC-001/SEC-002: /google and /microsoft are unauthenticated mocks — they issue a real
+// session for any email with no password, token, or signature check at all. Real OIDC/OAuth
+// token verification replaces this before either provider ships to a real environment; until
+// then, block both routes outright once NODE_ENV=production so this is only ever reachable
+// in local dev.
+const mockProviderGate: RequestHandler = (_req, _res, next) => {
+  if (config.isProd) {
+    throw new AppError("NOT_FOUND", "This sign-in method is not available.", 404);
+  }
+  next();
 };
 
 // POST /auth/login
@@ -37,7 +49,7 @@ authRoutes.post("/login", validate(LoginInput), async (req, res, next) => {
 // derive { email, name } from its claims. For a known account we issue a session;
 // for a new one we return the Google profile so the client can complete registration
 // (no password, email pre-filled + hidden).
-authRoutes.post("/google", validate(GoogleAuthInput), async (req, res, next) => {
+authRoutes.post("/google", mockProviderGate, validate(GoogleAuthInput), async (req, res, next) => {
   try {
     const { email, name } = req.body as GoogleAuthInput;
     const user = await authProvider.authenticateByEmail(email);
@@ -57,7 +69,7 @@ authRoutes.post("/google", validate(GoogleAuthInput), async (req, res, next) => 
 // Production wiring: verify the OAuth/OIDC token server-side and derive { email, name }
 // from its claims. Unlike /auth/google, there is no self-registration path — admin
 // accounts are provisioned by IT/People Ops, so an unknown or non-admin email errors.
-authRoutes.post("/microsoft", validate(MicrosoftAuthInput), async (req, res, next) => {
+authRoutes.post("/microsoft", mockProviderGate, validate(MicrosoftAuthInput), async (req, res, next) => {
   try {
     const { email } = req.body as MicrosoftAuthInput;
     const user = await authProvider.authenticateByEmail(email);

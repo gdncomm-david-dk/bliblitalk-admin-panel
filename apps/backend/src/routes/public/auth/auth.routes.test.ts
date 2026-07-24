@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, afterEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../../app";
 import { prisma } from "../../../db/client";
+import { config } from "../../../config";
 
 const REG_EMAIL = "signup-test@example.com";
 
@@ -165,5 +166,39 @@ describe("auth", () => {
       .send({ email: REG_EMAIL, name: "New Microsoft User" });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe("NO_ADMIN_ACCOUNT");
+  });
+});
+
+describe("SEC-001/SEC-002: mock providers are blocked in production", () => {
+  afterEach(() => {
+    config.isProd = false;
+  });
+
+  it("blocks /api/auth/google once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp)
+      .post("/api/auth/google")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(404);
+  });
+
+  it("blocks /api/auth/microsoft once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp)
+      .post("/api/auth/microsoft")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(404);
+  });
+
+  it("still allows the mock providers once isProd is false again", async () => {
+    config.isProd = true;
+    config.isProd = false; // exercise the toggle back before asserting normal behavior
+    const devApp = createApp();
+    const res = await request(devApp)
+      .post("/api/auth/google")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(200);
   });
 });
