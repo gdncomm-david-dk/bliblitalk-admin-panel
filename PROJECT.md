@@ -79,7 +79,7 @@ A tool is not automatically Low just because it is small. When in doubt, consult
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
 
-Remediation backlog: docs/REMEDIATION.md — 5 BLOCKING open / 26 ADVISORY open (last audited 2026-07-24).
+Remediation backlog: docs/REMEDIATION.md — 4 BLOCKING open / 26 ADVISORY open (last audited 2026-07-24).
 
 ## Hosting Location
 

@@ -109,13 +109,13 @@ Last audited: 2026-07-24
 - **Suggested fix:** Resolved at `/adopt-vibe` Phase 4 (repo homing) — migrate to the `gdncomm-ops` org via `ops-github`'s `/migrate-github-repo`, or get formal approval to stay outside it. Not yet raised with the project owner as of this audit.
 - **Status:** OPEN
 
-### DEP-001 — vitest 2.1.9: Critical OSV advisory (arbitrary file read/execute)  [OPEN]
+### DEP-001 — vitest 2.1.9: Critical OSV advisory (arbitrary file read/execute)  [FIXED (2026-07-24)]
 - **Source:** `scan-dependency/scan-deps`, critical-vuln
 - **Tier rule matched:** `critical-vuln` → BLOCKING
 - **Location:** `apps/backend`, `packages/auth`, `packages/shared-types`, `packages/shared-utils` (devDependency) — GHSA-5xrq-8626-4rwp
 - **Why blocking:** GitHub-rated Critical. Exploitable when the Vitest UI server is listening; the `test` script here uses `vitest run` (no `--ui`) so it is not exposed by the repo's own scripts today, but the vulnerable code ships in every workspace that depends on vitest.
 - **Suggested fix:** Bump `vitest` to ≥3.2.6 (or ≥4.1.0) across all four workspaces.
-- **Status:** OPEN
+- **Status:** FIXED (2026-07-24) — bumped all four workspaces to `^3.2.6` (resolved 3.2.7); full typecheck + test suite verified green in each. Commit `77f3ea2`.
 
 ### DEP-002 — png-js: empty/undeclared license metadata (transitive of pdfkit)  [OPEN]
 - **Source:** `scan-dependency/scan-deps`, forbidden-license
