@@ -43,25 +43,40 @@ Medium: used by a team, connects to company systems, uses internal company data,
 High: accessible outside the company or internet-facing, handles payments or money, uses sensitive personal or company data, or supports critical business processes.
 A tool is not automatically Low just because it is small. When in doubt, consult Information Security. -->
 
+**High** — classified 2026-07-24 by Claude via `golive-gate:assess-risk-level`.
+
+Matched criterion: *accessible outside the company or internet-facing* (owner-confirmed).
+
+Answer verification (per `data/risk-criteria.json`'s interview):
+- **users** — team + external participants. CONFIRMED: RBAC roles `SUPER_ADMIN`/`EVENT_ADMIN`/`HR_TA`/`VIEWER`/`PARTICIPANT` (`packages/shared-types/src/enums.ts`), shared deployment config (`k8s/README.md`, `docker-compose.yml`).
+- **systems** — connects to company systems. CONFIRMED: Postgres via Prisma, SMTP mailer for marketing/reminder emails (`apps/backend/src/config.ts` `smtp` block).
+- **data** — internal + participant personal data (name, email, phone, institution, department, position, years of experience). CONFIRMED via `schema.prisma` `User` model. No KTP/payroll/financial fields found — per the playbook's `personalDataRule`, this alone would not reach High, but combines with the exposure criterion below.
+- **automation** — automates regular work. CONFIRMED: `sweepEventLifecycle` and `sweepDueReminders` (60s interval sweeps, `apps/backend/src/index.ts`), marketing email campaigns (`adminMarketing.service.ts`).
+- **exposure** — **owner-confirmed: Yes**, the companion `bliblitalk-user-fe` participant portal is meant to be reachable by external event participants (not just gdn-commerce staff), e.g. via Google OAuth registration. This is the criterion that sets the High tier (owner confirmation governs per `exposureRule`; consistent with the code — participant registration has no company-domain restriction, unlike the admin CMS's Microsoft-SSO-gated login).
+- **money** — no payment/checkout code found anywhere in the codebase (confirmed during the `docs/DESIGN.md` financial-surface review). Not a High trigger by itself.
+- **criticality** — **owner-confirmed: No**, not a critical business process; events could run with manual workarounds if the tool broke. Not a High trigger by itself — High is reached via the exposure criterion alone.
+
+Per the High tier's requirements (see Go-Live Steps below): formal review and approval, monitoring, recovery procedures, and an independent (non-builder) reviewer are all still outstanding as of this classification.
+
 ## Access Status
 
-<!-- Internal-only or external access. State which and why. -->
+External — the companion `bliblitalk-user-fe` participant portal is designed to be reachable by people outside gdn-commerce (event participants/job-seekers registering via Google OAuth). The admin CMS (`bliblitalk-admin`, this repo) itself is intended for internal staff only, gated behind Microsoft SSO — but the shared backend/database this repo owns is the same trust boundary the external-facing portal talks to via its public API, which is why the High classification above applies to this repo too. Currently **not deployed anywhere** (local-only, confirmed 2026-07-24) — this section describes the intended access pattern once live, not current reachability.
 
 ## Data Used
 
-<!-- Classification: Public / Internal / Confidential. List the actual datasets and source systems. -->
+Internal / Participant Personal Data. Datasets: registrant/participant records (name, email, phone, institution, department, position, years of experience — `User` table), event data, registrations, feedback, certificates. Source: this repo's own Postgres database (no external data source). No KTP, payroll, health, or financial-account data is collected or stored anywhere in the schema.
 
 ## Data That Must Not Be Entered
 
-<!-- e.g. KTP, payroll data, customer data, passwords, access codes, financial data, confidential company information. -->
+KTP/NIK, payroll or salary data, financial account data, health data, passwords or access codes for other systems, or any other confidential company information — none of these fields exist in the current schema; this is a standing constraint on future changes, not a description of data already present.
 
 ## Login Method
 
-<!-- Apps Gateway (approved company SSO, default) or Company Google OAuth login (external users without a company account, or fallback while Apps Gateway is not yet configured). No other method is permitted. -->
+Admin CMS (this repo): Microsoft SSO (Apps Gateway-equivalent) — currently a **mock** implementation gated behind `!config.isProd` (see `docs/REMEDIATION.md` SEC-001/GLG-001; real Entra ID/OIDC verification is not yet implemented). Participant-facing login (consumed by `bliblitalk-user-fe` via this repo's public API): Google OAuth — also currently a **mock** implementation gated the same way (SEC-002). Neither is a real, verified SSO/OAuth integration yet — this is the GLG-001 blocking finding in `docs/REMEDIATION.md`.
 
 ## Access Levels
 
-<!-- Roles and permissions. Least privilege: users get only the access they need; not everyone is an administrator. Required detail for Medium and High risk. -->
+Role-based access control via `@repo/auth`'s permission matrix: `SUPER_ADMIN` (full access, including staff account provisioning and role management), `EVENT_ADMIN` (scoped to their own assigned events — participants, registrations, workspace tabs), `HR_TA` (Talent Acquisition, registrant/candidate visibility), `VIEWER` (read-only), `PARTICIPANT` (self-service registration and event participation only, no admin access). Enforced server-side via `requireAuth`/`requirePermission`/`requireRole` middleware on every admin route — required detail for High risk (per the risk criteria).
 
 ## Access Approval Process
 
@@ -70,6 +85,21 @@ A tool is not automatically Low just because it is small. When in doubt, consult
 ## Go-Live Steps
 
 <!-- Deployment route and the approvals required for this risk level. Low: owner check. Medium: independent review. High: Architecture, SRE, and Information Security approval. -->
+
+Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
+
+**Requirements:**
+- [ ] Formal review and approval required before go-live
+- [ ] Monitoring in place
+- [ ] Recovery procedures mandatory
+- [x] Access levels and permissions defined (see Access Levels above)
+- [ ] Independent reviewer (not the builder) — every commit in this repo has Claude as co-author, so this cannot be self-certified; see Task 6 of the P8 plan
+
+**Approvals needed:**
+- [ ] Tech R&D / Architecture
+- [ ] SRE
+- [ ] Information Security
+- [ ] GRC (as applicable)
 
 ## Review Evidence
 
