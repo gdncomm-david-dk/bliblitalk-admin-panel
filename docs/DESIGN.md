@@ -266,7 +266,7 @@ sequenceDiagram
       API->>DB: create Registration status WAITING (waitlist)
       API-->>Portal: on waitlist
     else FCFS, event full, waitingListEnabled = false
-      API-->>Portal: 409 EVENT_FULL, no registration created
+      API-->>Portal: 400 EVENT_FULL, no registration created
     end
 ```
 
