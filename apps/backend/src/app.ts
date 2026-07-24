@@ -32,8 +32,10 @@ import { createAuthRateLimiter } from "./middleware/rateLimit";
 
 // Every request carries the session cookie in `req.headers.cookie` — redact it (and any
 // Authorization header) so pino-http's default request serializer never writes a live
-// session token into application logs.
-export const LOG_REDACT_PATHS = ["req.headers.cookie", "req.headers.authorization"];
+// session token into application logs. SEC-006: a login/register response's own
+// `Set-Cookie` header carries the brand-new session JWT and must be redacted too, or the
+// token leaks into logs the instant it's issued instead of only on later requests.
+export const LOG_REDACT_PATHS = ["req.headers.cookie", "req.headers.authorization", 'res.headers["set-cookie"]'];
 
 export function createRequestLogger(loggerInstance: typeof logger = logger) {
   return pinoHttp({ logger: loggerInstance, redact: LOG_REDACT_PATHS });
@@ -41,6 +43,14 @@ export function createRequestLogger(loggerInstance: typeof logger = logger) {
 
 export function createApp() {
   const app = express();
+
+  // SEC-005 follow-up: the documented deployment topology (k8s/README.md) puts this app
+  // behind exactly one reverse proxy (Ingress -> internal Load Balancer). Without this,
+  // express-rate-limit's default req.ip-based bucketing resolves to the proxy's own address
+  // for every request, collapsing the per-client limit into one bucket shared by every user
+  // behind it. `1` trusts exactly the nearest hop, matching that single-proxy topology --
+  // revisit this number if the real topology ever adds another hop in front of the app.
+  app.set("trust proxy", 1);
 
   app.use(createRequestLogger());
   app.use(express.json());

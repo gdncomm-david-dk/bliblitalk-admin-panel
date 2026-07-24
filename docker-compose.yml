@@ -28,7 +28,10 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://blibli:blibli@db:5432/blibli_talk?schema=public
-      ADMIN_JWT_SECRET: change-me-in-prod
+      # Compose-only placeholder, never a real secret — must be >=32 chars or the app's own
+      # production startup check (resolveJwtSecret, config.ts) refuses to boot. Replace with a
+      # real generated secret (e.g. `openssl rand -hex 32`) for any non-throwaway environment.
+      ADMIN_JWT_SECRET: change-me-in-prod-this-is-a-placeholder-only-32chars
       COOKIE_NAME: blibli_talk_session
       LOG_LEVEL: info
       PUBLIC_FE_ORIGIN: http://localhost:5173
