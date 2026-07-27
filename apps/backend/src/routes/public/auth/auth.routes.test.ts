@@ -217,4 +217,22 @@ describe("SEC-001/SEC-002: mock providers are blocked in production", () => {
       .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
     expect(res.status).toBe(200);
   });
+
+  it("SEC-024: blocks /api/auth/register with provider: 'google' once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp).post("/api/auth/register").send({
+      fullName: "Google Person",
+      email: "sec-024-prod-bypass@example.com",
+      provider: "google",
+      phone: "+62 813 0000 0001",
+    });
+    expect(res.status).toBe(404);
+
+    // No account was created by the blocked attempt.
+    const created = await prisma.user.findUnique({
+      where: { email: "sec-024-prod-bypass@example.com" },
+    });
+    expect(created).toBeNull();
+  });
 });

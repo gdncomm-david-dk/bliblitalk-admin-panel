@@ -93,6 +93,14 @@ authRoutes.post("/microsoft", mockProviderGate, validate(MicrosoftAuthInput), as
 authRoutes.post("/register", validate(RegisterInput), async (req, res, next) => {
   try {
     const input = req.body as RegisterInput;
+    // SEC-024: a non-"email" provider (currently only "google") is an unauthenticated
+    // identity assertion with no password/token/signature check — the same bypass class as
+    // SEC-001/SEC-002, just reached via /auth/register instead of /auth/google. Block it in
+    // production the same way mockProviderGate blocks /auth/google and /auth/microsoft, while
+    // leaving the normal provider === "email" registration path completely untouched.
+    if (input.provider !== "email" && config.isProd) {
+      throw new AppError("NOT_FOUND", "This sign-in method is not available.", 404);
+    }
     // Email registrations must set a password; Google registrations are federated.
     if (input.provider !== "google" && !input.password) {
       throw new AppError("PASSWORD_REQUIRED", "Password is required", 422);
