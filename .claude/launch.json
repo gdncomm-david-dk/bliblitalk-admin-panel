@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bliblitalk-admin-backend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@repo/backend", "dev"],
+      "port": 4001
+    },
+    {
+      "name": "bliblitalk-admin-frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@repo/frontend", "dev"],
+      "port": 5184
+    },
+    {
+      "name": "bliblitalk-user-fe-frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "D:\\BlibliTalk-2.0\\bliblitalk-user-fe\\apps\\frontend", "dev"],
+      "port": 5183
+    }
+  ]
+}
