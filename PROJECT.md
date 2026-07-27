@@ -115,7 +115,7 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
 
-Remediation backlog: docs/REMEDIATION.md — 1 BLOCKING open (GLG-002, migration decided/pending) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
+Remediation backlog: docs/REMEDIATION.md — 1 BLOCKING open (GLG-002, migration decided/pending) / 1 BLOCKING fixed-not-yet-committed (SEC-024, /auth/register auth bypass, found 2026-07-24 via bliblitalk-user-fe's cross-repo audit, fixed same day) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
 
 ## Hosting Location
 
