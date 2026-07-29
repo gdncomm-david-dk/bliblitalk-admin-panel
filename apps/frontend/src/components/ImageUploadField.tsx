@@ -7,11 +7,13 @@ interface ImageUploadFieldProps {
   value: string; // current image URL ("" when unset)
   onChange: (url: string) => void;
   helpText?: string;
+  /** Optional recommended pixel size shown as a hint, e.g. "1280 × 720 (16:9)". */
+  recommendedSize?: string;
   /** Aspect ratio for the preview box, e.g. "16 / 9" (banner) or "1 / 1" (thumbnail). */
   aspect?: string;
 }
 
-export function ImageUploadField({ label, value, onChange, helpText, aspect = "16 / 9" }: ImageUploadFieldProps) {
+export function ImageUploadField({ label, value, onChange, helpText, recommendedSize, aspect = "16 / 9" }: ImageUploadFieldProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -87,7 +89,10 @@ export function ImageUploadField({ label, value, onChange, helpText, aspect = "1
       />
 
       {error && <p className="mt-1.5 text-xs font-medium text-status-red">{error}</p>}
-      {helpText && !error && <p className="mt-1.5 text-xs text-muted">{helpText}</p>}
+      {!error && recommendedSize && (
+        <p className="mt-1.5 text-xs font-medium text-ink/70">Recommended: {recommendedSize}</p>
+      )}
+      {!error && helpText && <p className="mt-1.5 text-xs text-muted">{helpText}</p>}
     </div>
   );
 }

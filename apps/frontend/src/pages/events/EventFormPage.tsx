@@ -253,13 +253,15 @@ export function EventFormPage() {
                 value={form.bannerUrl}
                 onChange={(url) => set("bannerUrl", url)}
                 aspect="16 / 9"
-                helpText="Large image shown on the event hero banner."
+                recommendedSize="1280 × 720 (16:9)"
+                helpText="Shown on the event detail hero and in event cards."
               />
               <ImageUploadField
                 label="Thumbnail"
                 value={form.thumbnailUrl}
                 onChange={(url) => set("thumbnailUrl", url)}
                 aspect="4 / 3"
+                recommendedSize="800 × 600 (4:3)"
                 helpText="Small image for event lists/cards. Falls back to the hero banner when unset."
               />
             </div>

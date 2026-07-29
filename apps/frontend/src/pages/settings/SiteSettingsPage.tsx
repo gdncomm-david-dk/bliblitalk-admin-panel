@@ -217,7 +217,8 @@ function LoginCarouselEditor({
                   label="Image (optional — falls back to a brand gradient)"
                   value={activeSlide.imageUrl ?? ""}
                   onChange={(url) => updateSlide(activeIndex, { imageUrl: url || null })}
-                  aspect="16 / 9"
+                  aspect="4 / 5"
+                  recommendedSize="1080 × 1350 (portrait 4:5)"
                 />
               </div>
             </div>

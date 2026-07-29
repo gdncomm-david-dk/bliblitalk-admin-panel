@@ -11,6 +11,7 @@ import { eventsRoutes } from "./routes/public/events/events.routes";
 import { dashboardRoutes } from "./routes/public/dashboard/dashboard.routes";
 import { myEventsRoutes } from "./routes/public/myevents/myevents.routes";
 import { registrationsRoutes } from "./routes/public/registrations/registrations.routes";
+import { speakersRoutes } from "./routes/public/speakers/speakers.routes";
 import { announcementsRoutes } from "./routes/public/announcements/announcements.routes";
 import { settingsRoutes } from "./routes/public/settings/settings.routes";
 import { adminDashboardRoutes } from "./routes/admin/adminDashboard.routes";
@@ -81,6 +82,7 @@ export function createApp() {
 
   app.use("/api/auth", createAuthRateLimiter(), authRoutes);
   app.use("/api/public/events", eventsRoutes);
+  app.use("/api/public/speakers", speakersRoutes);
   app.use("/api/public/me", dashboardRoutes);
   app.use("/api/public/me", myEventsRoutes);
   app.use("/api/public/me", registrationsRoutes);

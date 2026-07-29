@@ -315,8 +315,8 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
               <p className="mt-1 text-xs text-muted">Manage the full speaker directory on the Speakers page.</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <ImageUploadField label="Hero Banner" value={form.bannerUrl} onChange={(url) => set("bannerUrl", url)} aspect="16 / 9" helpText="Large image shown on the event hero banner." />
-              <ImageUploadField label="Thumbnail" value={form.thumbnailUrl} onChange={(url) => set("thumbnailUrl", url)} aspect="4 / 3" helpText="Small image for event lists/cards. Falls back to the hero banner when unset." />
+              <ImageUploadField label="Hero Banner" value={form.bannerUrl} onChange={(url) => set("bannerUrl", url)} aspect="16 / 9" recommendedSize="1280 × 720 (16:9)" helpText="Shown on the event detail hero and in event cards." />
+              <ImageUploadField label="Thumbnail" value={form.thumbnailUrl} onChange={(url) => set("thumbnailUrl", url)} aspect="4 / 3" recommendedSize="800 × 600 (4:3)" helpText="Small image for event lists/cards. Falls back to the hero banner when unset." />
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-muted">Description</label>
