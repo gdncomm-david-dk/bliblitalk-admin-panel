@@ -1,29 +1,14 @@
-import type {
-  Announcement,
-  Certificate,
-  Event,
-  EventCategory,
-  EventStatusHistory,
-  Feedback,
-  Registration,
-  Speaker,
-  SpeedDatingRegistration,
-} from "@prisma/client";
+import type { Event, EventCategory, Speaker } from "@prisma/client";
 import type {
   AgendaItemDTO,
-  AnnouncementDTO,
-  CertificateDTO,
   DiscussionPointDTO,
   EventDisplayConfig,
   EventDTO,
-  EventStatusHistoryDTO,
   FaqItemDTO,
   LearningPointDTO,
-  MyEventDTO,
-  NextAutoTransition,
   SpeakerDTO,
 } from "@repo/shared-types";
-import { DEFAULT_DISPLAY_CONFIG, EventStatus } from "@repo/shared-types";
+import { DEFAULT_DISPLAY_CONFIG, computeNextAutoTransition } from "@repo/shared-types";
 
 export function toSpeakerDTO(s: Speaker): SpeakerDTO {
   return {
@@ -39,7 +24,7 @@ export function toSpeakerDTO(s: Speaker): SpeakerDTO {
   };
 }
 
-type EventWithRelations = Event & {
+export type EventWithRelations = Event & {
   speakers: Speaker[];
   category: EventCategory;
   _count?: { registrations: number };
@@ -53,36 +38,6 @@ function asArray<T>(value: unknown): T[] {
 function asDisplayConfig(value: unknown): EventDisplayConfig {
   if (typeof value !== "object" || value === null) return DEFAULT_DISPLAY_CONFIG;
   return { ...DEFAULT_DISPLAY_CONFIG, ...(value as Partial<EventDisplayConfig>) };
-}
-
-/**
- * Display-only hint for the FE: the next time-based transition the scheduler
- * (P2) will make and when. P1 computes it from timestamps for the FE countdown;
- * it never drives the badge (the badge mirrors stored status + isOverdue).
- */
-function computeNextAutoTransition(e: {
-  status: EventStatus;
-  registrationOpensAt: Date | null;
-  registrationDeadline: Date | null;
-  startsAt: Date;
-  endsAt: Date;
-}): NextAutoTransition {
-  switch (e.status) {
-    case EventStatus.PUBLISHED:
-      return e.registrationOpensAt
-        ? { to: EventStatus.REGISTRATION_OPEN, at: e.registrationOpensAt.toISOString() }
-        : null;
-    case EventStatus.REGISTRATION_OPEN:
-      return e.registrationDeadline
-        ? { to: EventStatus.REGISTRATION_CLOSED, at: e.registrationDeadline.toISOString() }
-        : null;
-    case EventStatus.REGISTRATION_CLOSED:
-      return { to: EventStatus.ONGOING, at: e.startsAt.toISOString() };
-    case EventStatus.ONGOING:
-      return { to: EventStatus.COMPLETED, at: e.endsAt.toISOString() };
-    default:
-      return null;
-  }
 }
 
 export function toEventDTO(e: EventWithRelations): EventDTO {
@@ -131,62 +86,5 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     selectionMode: e.selectionMode,
     registrationOpensAt: e.registrationOpensAt?.toISOString() ?? null,
     nextAutoTransition: computeNextAutoTransition(e),
-  };
-}
-
-export function toEventStatusHistoryDTO(h: EventStatusHistory): EventStatusHistoryDTO {
-  return {
-    id: h.id,
-    fromStatus: h.fromStatus,
-    toStatus: h.toStatus,
-    actorType: h.actorType as "ADMIN" | "SYSTEM",
-    actorId: h.actorId,
-    reason: h.reason,
-    sideEffectsStatus: h.sideEffectsStatus as "PENDING" | "DONE" | "FAILED" | "NONE",
-    createdAt: h.createdAt.toISOString(),
-  };
-}
-
-export function toAnnouncementDTO(a: Announcement): AnnouncementDTO {
-  return {
-    id: a.id,
-    title: a.title,
-    body: a.body,
-    publishedAt: a.publishedAt.toISOString(),
-    pinned: a.pinned,
-  };
-}
-
-type RegistrationWithRelations = Registration & {
-  event: EventWithRelations;
-  speedDating?: SpeedDatingRegistration | null;
-  feedback?: Feedback | null;
-};
-
-/** Shared by GET /me/events and the register/cancel actions so the shape never drifts. */
-export function toMyEventDTO(
-  r: RegistrationWithRelations,
-  certEventIds: ReadonlySet<string>,
-): MyEventDTO {
-  return {
-    id: r.id,
-    event: toEventDTO(r.event),
-    status: r.status,
-    attendance: r.attendance,
-    certificateAvailable: certEventIds.has(r.eventId) || r.attendance === "PRESENT",
-    feedbackSubmitted: r.feedback != null,
-    speedDatingCompleted: r.speedDating?.status === "COMPLETED",
-    speedDating: r.speedDating
-      ? { status: r.speedDating.status, sessionInfo: r.speedDating.sessionInfo }
-      : null,
-  };
-}
-
-export function toCertificateDTO(c: Certificate & { event: Event }): CertificateDTO {
-  return {
-    id: c.id,
-    eventTitle: c.event.title,
-    issuedAt: c.issuedAt.toISOString(),
-    verificationCode: c.verificationCode,
   };
 }

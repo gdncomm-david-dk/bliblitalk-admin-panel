@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import type { User } from "@prisma/client";
 import type { UserDTO } from "@repo/shared-types";
 import { type SessionClaims, toSessionClaims } from "@repo/auth";
-import { config } from "../../../config";
+import { config } from "../../config";
 
 export type TokenPayload = SessionClaims;
 

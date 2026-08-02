@@ -1,10 +1,10 @@
 import { Attendance, RegistrationStatus, type FeedbackInput, type MyEventDTO } from "@repo/shared-types";
 import { prisma } from "../../../db/client";
 import { AppError } from "../../../middleware/error";
-import { eventInclude } from "../events/events.service";
-import { toMyEventDTO } from "../../../lib/shared/mappers";
+import { eventInclude } from "../../../lib/shared/eventInclude";
+import { toMyEventDTO } from "../shared/mappers";
 import { generateVerificationCode } from "../../../lib/shared/certificateCode";
-import { getCertificateSettings } from "../../admin/adminModuleSettings.service";
+import { getCertificateSettings } from "../../../lib/shared/moduleSettings.service";
 import { renderCertificatePdf } from "./certificate.pdf";
 
 /**
@@ -74,6 +74,23 @@ export async function submitFeedback(
 }
 
 /**
+ * Named separately from the GET handler that calls it so the write this "read"
+ * performs stays greppable: self-service issuance for an attendee who has
+ * already cleared the attendance/feedback gates, no admin step required.
+ * Idempotent per (userId, eventId) — a second call finds the existing row.
+ */
+async function issueCertificateIfMissing(userId: string, eventId: string, enableCertificate: boolean) {
+  const existing = await prisma.certificate.findFirst({ where: { userId, eventId } });
+  if (existing) return existing;
+  if (!enableCertificate) {
+    throw new AppError("CERTIFICATES_DISABLED", "Certificates are not enabled for this event", 400);
+  }
+  return prisma.certificate.create({
+    data: { userId, eventId, verificationCode: generateVerificationCode() },
+  });
+}
+
+/**
  * Returns a downloadable certificate for an attended, certificated event, issuing
  * one on the fly on first request. If the event requires feedback, download is
  * blocked until the registrant has submitted it.
@@ -99,19 +116,7 @@ export async function getCertificateDownload(
     );
   }
 
-  let certificate = await prisma.certificate.findFirst({
-    where: { userId, eventId: registration.eventId },
-  });
-  if (!certificate) {
-    if (!registration.event.enableCertificate) {
-      throw new AppError("CERTIFICATES_DISABLED", "Certificates are not enabled for this event", 400);
-    }
-    // Self-service issuance: an attendee who has cleared the gates above can
-    // generate their own certificate on first download, no admin step required.
-    certificate = await prisma.certificate.create({
-      data: { userId, eventId: registration.eventId, verificationCode: generateVerificationCode() },
-    });
-  }
+  const certificate = await issueCertificateIfMissing(userId, registration.eventId, registration.event.enableCertificate);
 
   const issuedDate = certificate.issuedAt.toLocaleDateString("en-US", {
     day: "numeric",

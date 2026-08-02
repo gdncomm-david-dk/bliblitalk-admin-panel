@@ -1,19 +1,8 @@
-import {
-  EventStatus,
-  RegistrationStatus,
-  type PortalEventFilter,
-  type MyEventDTO,
-} from "@repo/shared-types";
+import { EventStatus, RegistrationStatus, type PortalEventFilter, type MyEventDTO } from "@repo/shared-types";
 import { prisma } from "../../../db/client";
 import { AppError } from "../../../middleware/error";
-import { toMyEventDTO } from "../../../lib/shared/mappers";
-
-// seatsTaken only counts confirmed seats — WAITING/CANCELLED/REJECTED don't occupy capacity.
-export const eventInclude = {
-  speakers: true,
-  category: true,
-  _count: { select: { registrations: { where: { status: RegistrationStatus.REGISTERED } } } },
-} as const;
+import { toMyEventDTO } from "../shared/mappers";
+import { eventInclude } from "../../../lib/shared/eventInclude";
 
 // The portal never sees DRAFT or CANCELLED events. REGISTRATION_OPEN and ONGOING are
 // the new live states (reachable in P1 via the open-registration action and the manual

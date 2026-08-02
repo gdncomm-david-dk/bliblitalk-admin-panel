@@ -3,7 +3,7 @@ import type { Role } from "@repo/shared-types";
 import { can, type Permission } from "@repo/auth";
 import { config } from "../config";
 import { AppError } from "./error";
-import { verifyToken } from "../routes/public/auth/auth.service";
+import { verifyToken } from "../lib/shared/auth.service";
 import { prisma } from "../db/client";
 
 declare global {

@@ -19,7 +19,7 @@ import {
   setFeedbackSettings,
   setPortalLoginCarousel,
   setSpeedDatingSettings,
-} from "./adminModuleSettings.service";
+} from "../../lib/shared/moduleSettings.service";
 
 export const adminModuleSettingsRoutes = Router();
 

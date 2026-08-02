@@ -1,7 +1,7 @@
 import type { MyEventDTO } from "@repo/shared-types";
 import { prisma } from "../../../db/client";
-import { toMyEventDTO } from "../../../lib/shared/mappers";
-import { eventInclude } from "../events/events.service";
+import { toMyEventDTO } from "../shared/mappers";
+import { eventInclude } from "../../../lib/shared/eventInclude";
 
 /** All of the user's registrations with event, status, attendance, cert + speed-dating flags. */
 export async function getMyEvents(userId: string): Promise<MyEventDTO[]> {

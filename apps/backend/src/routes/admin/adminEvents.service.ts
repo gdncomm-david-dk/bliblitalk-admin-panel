@@ -10,8 +10,9 @@ import type {
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
-import { eventInclude } from "../public/events/events.service";
-import { toEventDTO, toEventStatusHistoryDTO } from "../../lib/shared/mappers";
+import { eventInclude } from "../../lib/shared/eventInclude";
+import { toEventDTO } from "../../lib/shared/mappers";
+import { toEventStatusHistoryDTO } from "./shared/mappers";
 import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 
 function mergeDisplayConfig(

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import jwt from "jsonwebtoken";
-import { config } from "../../../config";
+import { config } from "../../config";
 import { verifyToken } from "./auth.service";
 
 describe("auth.service", () => {

@@ -31,6 +31,11 @@ export const config = {
   logLevel: process.env.LOG_LEVEL ?? "info",
   publicFeOrigin: process.env.PUBLIC_FE_ORIGIN ?? "http://localhost:5173",
   adminFeOrigin: process.env.ADMIN_FE_ORIGIN ?? "http://localhost:5174",
+  // The reminder/lifecycle schedulers must run in exactly one backend process — sweepDueReminders
+  // has no idempotency guard, so running it in two processes double-sends every due reminder
+  // email. Admin owns them by default; set ENABLE_SCHEDULERS=false there if that ever changes,
+  // and never set it to true on the public backend.
+  enableSchedulers: process.env.ENABLE_SCHEDULERS !== "false",
   smtp: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),

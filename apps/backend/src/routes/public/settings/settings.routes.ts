@@ -3,8 +3,8 @@ import {
   getAdminLoginCarousel,
   getFeedbackSettings,
   getPortalLoginCarousel,
-} from "../../admin/adminModuleSettings.service";
-import { getSiteSettings } from "./settings.service";
+} from "../../../lib/shared/moduleSettings.service";
+import { getSiteSettings } from "../../../lib/shared/siteSettings.service";
 
 export const settingsRoutes = Router();
 

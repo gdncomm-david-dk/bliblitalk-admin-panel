@@ -1,15 +1,20 @@
 import type { SiteSettingsDTO } from "@repo/shared-types";
-import { prisma } from "../../../db/client";
+import { prisma } from "../../db/client";
 
 const SINGLETON_ID = "singleton";
 
-/** Upserts on read so the row always exists without a separate migration-time seed dependency. */
-export async function getSiteSettings(): Promise<SiteSettingsDTO> {
-  const row = await prisma.siteSettings.upsert({
+/** Idempotent — creates the singleton row on first call, no-ops on every call after. */
+function ensureSiteSettingsRow() {
+  return prisma.siteSettings.upsert({
     where: { id: SINGLETON_ID },
     create: { id: SINGLETON_ID },
     update: {},
   });
+}
+
+/** Named separately from a plain read so the write this GET performs stays greppable. */
+export async function getSiteSettings(): Promise<SiteSettingsDTO> {
+  const row = await ensureSiteSettingsRow();
   return { contactEmail: row.contactEmail };
 }
 

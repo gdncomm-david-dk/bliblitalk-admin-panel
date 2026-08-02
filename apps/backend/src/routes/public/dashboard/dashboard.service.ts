@@ -1,6 +1,6 @@
 import { EventStatus, RegistrationStatus, type DashboardDTO } from "@repo/shared-types";
 import { prisma } from "../../../db/client";
-import { toUserDTO } from "../auth/auth.service";
+import { toUserDTO } from "../../../lib/shared/auth.service";
 import { toEventDTO } from "../../../lib/shared/mappers";
 
 const eventInclude = {

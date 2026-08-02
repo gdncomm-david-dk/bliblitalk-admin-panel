@@ -6,7 +6,7 @@ import { AppError } from "../../../middleware/error";
 import { validate } from "../../../middleware/validate";
 import { requireAuth } from "../../../middleware/requireAuth";
 import { authProvider } from "./MockAuthProvider";
-import { signToken, toUserDTO, verifyToken } from "./auth.service";
+import { signToken, toUserDTO, verifyToken } from "../../../lib/shared/auth.service";
 import { prisma } from "../../../db/client";
 
 export const authRoutes = Router();

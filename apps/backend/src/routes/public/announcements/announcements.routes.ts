@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../../db/client";
-import { toAnnouncementDTO } from "../../../lib/shared/mappers";
+import { toAnnouncementDTO } from "../shared/mappers";
 
 export const announcementsRoutes = Router();
 
