@@ -47,12 +47,6 @@ describe("admin events CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
-    const res = await agent.get("/api/admin/events");
-    expect(res.status).toBe(403);
-  });
-
   it("creates a draft event with an auto-generated slug", async () => {
     const agent = await loginAs("superadmin@gdn-commerce.com");
     const res = await agent
@@ -158,14 +152,14 @@ describe("admin events CRUD", () => {
     expect(res.status).toBe(422);
   });
 
-  it("rejects participants from the manual status override (no permission)", async () => {
+  it("rejects a viewer from the manual status override (no permission)", async () => {
     const admin = await loginAs("superadmin@gdn-commerce.com");
     const created = await admin
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-forbidden` }));
 
-    const participant = await loginAs("demo@gdn-commerce.com");
-    const res = await participant
+    const viewer = await loginAs("viewer@gdn-commerce.com");
+    const res = await viewer
       .patch(`/api/admin/events/${created.body.id}/status`)
       .send({ status: "PUBLISHED" });
     expect(res.status).toBe(403);

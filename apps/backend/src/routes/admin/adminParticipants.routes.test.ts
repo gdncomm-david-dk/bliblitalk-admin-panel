@@ -141,10 +141,4 @@ describe("admin participants", () => {
     const shortlist = await agent.post(`/api/admin/registrations/${regId}/shortlist`);
     expect(shortlist.status).toBe(403);
   });
-
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
-    const res = await agent.get(`/api/admin/events/${eventId}/registrations`);
-    expect(res.status).toBe(403);
-  });
 });

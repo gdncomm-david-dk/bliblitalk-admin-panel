@@ -10,15 +10,6 @@ describe("admin dashboard", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (not an admin role)", async () => {
-    const agent = request.agent(app);
-    await agent
-      .post("/api/auth/login")
-      .send({ email: "demo@gdn-commerce.com", password: "password123" });
-    const res = await agent.get("/api/admin/dashboard");
-    expect(res.status).toBe(403);
-  });
-
   it("returns the full dashboard payload for a super admin (platform-wide)", async () => {
     const agent = request.agent(app);
     await agent

@@ -29,7 +29,6 @@ export const config = {
   jwtSecret: resolveJwtSecret(process.env),
   cookieName: process.env.COOKIE_NAME ?? "blibli_talk_session",
   logLevel: process.env.LOG_LEVEL ?? "info",
-  publicFeOrigin: process.env.PUBLIC_FE_ORIGIN ?? "http://localhost:5173",
   adminFeOrigin: process.env.ADMIN_FE_ORIGIN ?? "http://localhost:5174",
   // The reminder/lifecycle schedulers must run in exactly one backend process — sweepDueReminders
   // has no idempotency guard, so running it in two processes double-sends every due reminder

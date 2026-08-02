@@ -17,8 +17,8 @@ describe("admin analytics", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
+  it("rejects an HR admin without analytics access (no permission)", async () => {
+    const agent = await loginAs("hrta@gdn-commerce.com");
     const res = await agent.get("/api/admin/analytics");
     expect(res.status).toBe(403);
   });

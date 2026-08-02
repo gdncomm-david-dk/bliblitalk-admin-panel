@@ -442,6 +442,29 @@ async function main() {
       adminEvents: { connect: [{ id: notLost.id }, { id: learning.id }] },
     },
   });
+  // Read-only and HR-scoped roles — seeded so tests and local dev can exercise every
+  // ADMIN_ROLES tier, not just SUPER_ADMIN/EVENT_ADMIN.
+  await prisma.user.create({
+    data: {
+      email: "viewer@gdn-commerce.com",
+      name: "Viewer",
+      role: "VIEWER",
+      department: "Finance",
+      position: "Read-Only Observer",
+      passwordHash,
+    },
+  });
+  await prisma.user.create({
+    data: {
+      email: "hrta@gdn-commerce.com",
+      name: "HR Talent Acquisition",
+      role: "HR_TA",
+      department: "People & Culture",
+      position: "Talent Acquisition Specialist",
+      passwordHash,
+    },
+  });
+
   // Own the two assigned events; backfill publishedAt for the live ones.
   await prisma.event.updateMany({
     where: { id: { in: [notLost.id, learning.id] } },
@@ -597,7 +620,7 @@ async function main() {
   void [notLost, ai];
 
   // eslint-disable-next-line no-console
-  console.log("Seed complete: 3 users (1 participant + super/event admin), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
+  console.log("Seed complete: 5 users (1 participant, super admin, event admin, viewer, HR/TA), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
 }
 
 main()

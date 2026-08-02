@@ -6,14 +6,7 @@ import { logger } from "./logger";
 import { config } from "./config";
 import { errorHandler } from "./middleware/error";
 import { healthRoutes } from "./routes/health";
-import { authRoutes } from "./routes/public/auth/auth.routes";
-import { eventsRoutes } from "./routes/public/events/events.routes";
-import { dashboardRoutes } from "./routes/public/dashboard/dashboard.routes";
-import { myEventsRoutes } from "./routes/public/myevents/myevents.routes";
-import { registrationsRoutes } from "./routes/public/registrations/registrations.routes";
-import { speakersRoutes } from "./routes/public/speakers/speakers.routes";
-import { announcementsRoutes } from "./routes/public/announcements/announcements.routes";
-import { settingsRoutes } from "./routes/public/settings/settings.routes";
+import { authRoutes } from "./routes/auth/auth.routes";
 import { adminDashboardRoutes } from "./routes/admin/adminDashboard.routes";
 import { adminEventsRoutes } from "./routes/admin/adminEvents.routes";
 import { adminParticipantsRoutes } from "./routes/admin/adminParticipants.routes";
@@ -57,17 +50,12 @@ export function createApp() {
   app.use(express.json());
   app.use(cookieParser());
 
-  // CORS is per-prefix, not wildcard: /api/public/* only trusts the user-facing
-  // portal's origin, /api/admin/* only trusts the admin CMS's origin. Auth is the
-  // one surface both FE apps hit directly (single unified session/RBAC system),
-  // so it gets its own prefix trusting both known origins — never a wildcard.
+  // Repo split: this backend is internal-only and serves nothing on /api/public/* anymore
+  // (bliblitalk-user-fe owns that now, with its own backend). CORS only ever needs to trust
+  // the admin CMS's own origin.
   app.use(
     "/api/auth",
-    cors({ origin: [config.publicFeOrigin, config.adminFeOrigin], credentials: true }),
-  );
-  app.use(
-    "/api/public",
-    cors({ origin: config.publicFeOrigin, credentials: true }),
+    cors({ origin: config.adminFeOrigin, credentials: true }),
   );
   app.use(
     "/api/admin",
@@ -76,18 +64,12 @@ export function createApp() {
 
   app.use("/api", healthRoutes);
 
-  // Uploaded images (served statically; written by POST /api/admin/uploads).
-  // Not gated by either CORS block above — referenced as <img src> by both FE apps.
+  // Uploaded images (served statically; written by POST /api/admin/uploads). Not gated by
+  // either CORS block above — referenced as <img src> by the portal too (until Phase 6
+  // moves uploads to GCS), so it stays unauthenticated static file serving.
   app.use("/api/uploads", express.static(UPLOADS_DIR));
 
   app.use("/api/auth", createAuthRateLimiter(), authRoutes);
-  app.use("/api/public/events", eventsRoutes);
-  app.use("/api/public/speakers", speakersRoutes);
-  app.use("/api/public/me", dashboardRoutes);
-  app.use("/api/public/me", myEventsRoutes);
-  app.use("/api/public/me", registrationsRoutes);
-  app.use("/api/public/announcements", announcementsRoutes);
-  app.use("/api/public/site-settings", settingsRoutes);
 
   app.use("/api/admin", adminDashboardRoutes);
   app.use("/api/admin/events", adminEventsRoutes);

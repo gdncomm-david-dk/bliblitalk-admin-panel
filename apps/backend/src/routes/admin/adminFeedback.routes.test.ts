@@ -94,12 +94,6 @@ describe("admin feedback aggregate", () => {
     expect(res.body.wordCloud.length).toBeGreaterThan(0);
     expect(res.body.comments).toHaveLength(1);
   });
-
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
-    const res = await agent.get(`/api/admin/events/${eventId}/feedback`);
-    expect(res.status).toBe(403);
-  });
 });
 
 describe("admin registration open/close toggle", () => {

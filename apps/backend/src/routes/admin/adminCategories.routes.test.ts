@@ -27,8 +27,8 @@ describe("admin categories CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
+  it("rejects a viewer (no permission)", async () => {
+    const agent = await loginAs("viewer@gdn-commerce.com");
     const res = await agent.get("/api/admin/categories");
     expect(res.status).toBe(403);
   });

@@ -17,11 +17,11 @@ describe("admin users", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
+  it("rejects a viewer (no permission)", async () => {
     const agent = request.agent(app);
     await agent
       .post("/api/auth/login")
-      .send({ email: "demo@gdn-commerce.com", password: "password123" });
+      .send({ email: "viewer@gdn-commerce.com", password: "password123" });
     const res = await agent.get("/api/admin/users");
     expect(res.status).toBe(403);
   });
