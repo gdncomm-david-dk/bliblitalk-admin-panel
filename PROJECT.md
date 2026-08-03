@@ -130,12 +130,14 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
   - Advisory backlog at gate time: 24 OPEN advisory findings (SEC-009 through SEC-023, DEP-004 through DEP-007, STK-001/002, STR-001 through STR-008) — documented, none blocking, tracked in `docs/REMEDIATION.md`.
   - `vibe-release.json` written at repo root for commit `d2239bb` — not committed (per policy, the owner commits and pushes governance docs, e.g. via `/push-github`).
   - Checked by: Claude, 2026-08-03.
+- **2026-08-03 — GLG-002 (repo outside approved GitHub org) resolved:** owner chose "Hold — migrate to `gdncomm-ops` first" rather than push to the non-approved `gdncomm-david-dk` remote. Migration completed: `origin` renamed to `backup-origin` (kept, untouched), new `origin` set to `https://github.com/gdncomm-ops/bliblitalk-admin.git`, `feat/qa-hardening-p8` pushed as a verified fast-forward (`b0e6aec..970d353`, confirmed non-divergent via `git merge-base --is-ancestor` before push), tag `pre-split-2026-08-02` pushed, both verified landed via `git ls-remote`. See `docs/REMEDIATION.md` GLG-002 (now FIXED) for full detail. This clears blocking item 2 (`remediation-blocking-clear`, GLG-002 specifically) from the 2026-08-03 `check-golive-readiness` run above; the other 7 blocking items on that list are unaffected and remain open pending owner action.
+  - Checked by: Claude, 2026-08-03.
 
 ## Security Notes
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
 
-Remediation backlog: docs/REMEDIATION.md — 1 BLOCKING open (GLG-002, migration decided/pending) / 1 BLOCKING fixed-not-yet-committed (SEC-024, /auth/register auth bypass, found 2026-07-24 via bliblitalk-user-fe's cross-repo audit, fixed same day) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
+Remediation backlog: docs/REMEDIATION.md — 0 BLOCKING open / 1 BLOCKING fixed-not-yet-committed (SEC-024, /auth/register auth bypass, found 2026-07-24 via bliblitalk-user-fe's cross-repo audit, fixed same day) / 1 BLOCKING fixed (GLG-002, migrated to gdncomm-ops, 2026-08-03) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
 
 ## Hosting Location
 
