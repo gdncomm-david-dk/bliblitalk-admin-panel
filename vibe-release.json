@@ -1,0 +1,22 @@
+{
+  "review-gate": "formal-review",
+  "review-verdict": null,
+  "review-proof": null,
+  "reviewed-at": null,
+  "release-gate-status": "NOT-READY",
+  "target-commit-hash": "d2239bbc8acdf3dffeb8d061876efd7bbab20a4e",
+  "generated-at": "2026-08-03",
+  "start-vibe": "2026-07-13",
+  "project-name": "bliblitalk-admin",
+  "project-owner": null,
+  "support-contact": null,
+  "gcp-label-company": null,
+  "gcp-label-div": null,
+  "gcp-label-dept": null,
+  "project-scope": "external",
+  "risk-level": "high",
+  "project-status": "blocked",
+  "app-web-url": null,
+  "repo-url": "https://github.com/gdncomm-david-dk/bliblitalk-admin.git",
+  "live-version": "0.0.0"
+}
