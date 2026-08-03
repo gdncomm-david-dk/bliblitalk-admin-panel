@@ -4,6 +4,12 @@
 > the codebase and the docs in this repo, then completed by the project owner. Companion to `PROJECT.md`
 > (go-live dossier, now completed for this repo) and `docs/ARCHITECTURE.md` (as-built architecture, still
 > not written) — see §0 below for how this document was produced.
+>
+> **⚠️ STALE as of 2026-08-02 — written before the repo-split (Phases 0–5, this repo's own
+> `CONTEXT.md`).** Every mention of `/api/public/*` or `routes/public/*` below describes code that has
+> since moved to `bliblitalk-user-fe`'s own backend; this repo now serves admin-only routes. Needs a
+> full regeneration via the `design-document` skill (diagrams re-derived from the current code) before
+> the pending independent review (task: admin — Independent review) relies on it.
 
 ## 0. Scope of this document
 
@@ -960,8 +966,10 @@ dedicated OWASP-style review) using the detail below as its starting material.
   check, `apps/frontend/src/app/App.tsx`).
 - **Encryption & sensitive data:** Session is a signed JWT (`jsonwebtoken`, 7-day expiry) in an httpOnly
   cookie; `secure` flag is conditional on `NODE_ENV=production` (expected for local dev). **The JWT secret
-  falls back to a hardcoded default `"dev-only-change-me"`** if `ADMIN_JWT_SECRET` is unset
-  (`apps/backend/src/config.ts:7`), and the checked-in dev `.env` literally uses that same default value.
+  falls back to a hardcoded default `"dev-only-change-me"`** if `JWT_SECRET` is unset (renamed from
+  `ADMIN_JWT_SECRET` in Phase 7 of the repo split — it is no longer admin-only, since
+  `bliblitalk-user-fe`'s backend must set the exact same value; see `apps/backend/src/config.ts`), and
+  the checked-in dev `.env` literally uses that same default value.
   ⚠️ The real secret-management mechanism for a deployed environment is not settled — the placeholder
   `k8s/README.md` never actually wires a `Secret` resource, and no infrastructure exists yet (see Deployment).
   No token revocation/blacklist exists — logout only clears the cookie, the JWT itself remains valid for its

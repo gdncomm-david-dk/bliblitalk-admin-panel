@@ -7,13 +7,17 @@ const MIN_PROD_JWT_SECRET_LENGTH = 32;
  * In production, a missing/placeholder/short secret would let anyone forge a session JWT —
  * fail fast at startup instead of silently signing tokens with a guessable value. Outside
  * production, keep the dev fallback so `pnpm dev` works with no env setup required.
+ *
+ * Renamed from ADMIN_JWT_SECRET (Phase 7 of the repo split): this value is no longer
+ * admin-only — bliblitalk-user-fe's backend must be set to the exact same value, or every
+ * session issued by one backend silently fails verification on the other.
  */
 export function resolveJwtSecret(env: NodeJS.ProcessEnv): string {
-  const secret = env.ADMIN_JWT_SECRET;
+  const secret = env.JWT_SECRET;
   if (env.NODE_ENV === "production") {
     if (!secret || secret.length < MIN_PROD_JWT_SECRET_LENGTH || PLACEHOLDER_JWT_SECRETS.has(secret)) {
       throw new Error(
-        `ADMIN_JWT_SECRET must be set to a random value of at least ${MIN_PROD_JWT_SECRET_LENGTH} ` +
+        `JWT_SECRET must be set to a random value of at least ${MIN_PROD_JWT_SECRET_LENGTH} ` +
           "characters in production.",
       );
     }

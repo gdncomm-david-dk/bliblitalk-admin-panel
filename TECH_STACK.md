@@ -55,7 +55,7 @@ Semua variabel dideklarasikan di `.env.example`. Jangan pernah commit `.env`.
 | `DATABASE_URL` | Yes | Connection string PostgreSQL 15 |
 | `PUBLIC_FE_ORIGIN` | Yes | Origin user FE untuk allow-list CORS `/api/public/*` |
 | `ADMIN_FE_ORIGIN` | Yes | Origin admin FE untuk allow-list CORS `/api/admin/*` |
-| `ADMIN_JWT_SECRET` | Yes | Secret untuk verifikasi sesi admin (via GKE Secret) |
+| `JWT_SECRET` | Yes | Secret untuk verifikasi sesi admin (via GKE Secret) |
 
 > Zone 1: bagian "External API Variables" & "External Dependencies" harus kosong. Jika terisi, eskalasi ke squad lead.
 
@@ -104,7 +104,7 @@ kubectl apply -f k8s/service.yaml
 - **Cluster:** [isi]
 - **Namespace:** [isi]
 - **Load Balancer:** Internal (admin tidak public-facing)
-- **Secret:** buat `bliblitalk-admin-secrets` berisi `DATABASE_URL`, `ADMIN_JWT_SECRET` via `kubectl create secret`.
+- **Secret:** buat `bliblitalk-admin-secrets` berisi `DATABASE_URL`, `JWT_SECRET` via `kubectl create secret`.
 
 ---
 

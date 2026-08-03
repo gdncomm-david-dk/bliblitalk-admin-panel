@@ -128,7 +128,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Feature / flow: config — JWT secret validation
 - Category: sensitive
 - Verify: agent
-- Preconditions: NODE_ENV=production with ADMIN_JWT_SECRET unset, a known placeholder, or under 32 characters
+- Preconditions: NODE_ENV=production with JWT_SECRET unset, a known placeholder, or under 32 characters
 - Steps: call `resolveJwtSecret(env)` for each case
 - Expected: throws in all three cases; accepts a valid ≥32-char non-placeholder secret; dev/test keeps the fallback
 - Covers: `apps/backend/src/config.ts:11-23`, `apps/backend/src/config.test.ts`

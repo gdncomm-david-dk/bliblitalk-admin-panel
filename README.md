@@ -38,7 +38,7 @@ In production, the backend also serves the built admin FE statically — one ful
 ### Run without Docker
 ```bash
 pnpm install
-cp apps/backend/.env.example apps/backend/.env   # fill in DATABASE_URL, ADMIN_JWT_SECRET, etc.
+cp apps/backend/.env.example apps/backend/.env   # fill in DATABASE_URL, JWT_SECRET, etc.
 pnpm --filter @repo/backend db:migrate
 pnpm --filter @repo/backend db:seed
 pnpm --filter @repo/backend dev     # Terminal 1 — http://localhost:4000

@@ -59,8 +59,19 @@ that roadmap are merged, P8's QA-hardening/go-live remnants are tracked separate
   every `ADMIN_ROLES` tier has live test coverage, and fixed the resulting RBAC-test regressions
   (10 files — role-swapped or removed now-unreachable "rejects participants" tests; see Key
   Decisions). Exit: 150/150 backend tests green, zero `/api/public/*` surface.
-- [ ] Phase 6 — Move uploads to Google Cloud Storage; rewrite persisted relative URLs to absolute.
+- [ ] Phase 6 — **Deferred by owner decision**: no GCS project/bucket exists yet, so uploads stay
+  local-disk for now (`apps/backend/src/routes/admin/adminUploads.routes.ts`, unchanged). Resume
+  once a bucket is provisioned. Known consequence of deferring: uploaded images remain served only
+  from this backend's local filesystem — `bliblitalk-user-fe` cannot render admin-uploaded images
+  (banners, speaker avatars) until this lands, and the pre-existing ephemerality bug (no volume in
+  compose/k8s) is still open.
 - [ ] Phase 7 — Two Dockerfiles, path-routed ingress, split env per app, CI, governance doc updates.
+  Landed this session, verified (typecheck/lint/test green — 150/150 backend tests after a reseed
+  cleared a stale P4-era e2e fixture row), pending commit: `ADMIN_JWT_SECRET` renamed to `JWT_SECRET`
+  throughout (it stopped being admin-only the moment `bliblitalk-user-fe` needed the same value),
+  deleted the stale unused root `.env.example`, rewrote `k8s/README.md` for the two-repo topology,
+  added `.github/workflows/ci.yml`, and added a `⚠️ STALE` banner to `docs/DESIGN.md` (14 mentions of
+  the now-deleted `/api/public/*`).
 
 **Completed — 8-phase event-lifecycle & status-consistency overhaul** (each phase separately
 specced and planned under `docs/superpowers/`):
@@ -123,14 +134,28 @@ specced and planned under `docs/superpowers/`):
 - **Local dev Postgres is a portable, non-persistent install** (not Docker, not a service) — it does
   not survive a reboot and needs manual restart; see the project's own memory notes for the exact
   command if a Prisma call fails with a connection error.
+- **Planned (not yet implemented): migrate this repo's login to Apps Gateway SSO, admin-only.**
+  Apps Gateway fits this repo because its entire user population (`SUPER_ADMIN`/`EVENT_ADMIN`/
+  `HR_TA`/`VIEWER`) is internal staff — it does not fit `bliblitalk-user-fe` (external participants,
+  no company-account requirement), which stays on Company Google OAuth once that's wired for real.
+  The plan (drafted via `authn-implementations:setup-authn`, 2026-08-03): retire `/api/auth/login`,
+  `/api/auth/microsoft` (the mocked SSO, `GLG-001`), and JWT/cookie sessions entirely; read identity
+  from the gateway's `X-User-Id` header instead. `packages/auth/src/rbac.ts`'s existing
+  `ROLE_PERMISSIONS`/`isAdminRole` stay unchanged as the app-layer authorization, keyed by
+  `User.email`/`role` — owner confirmed access must still be role-based ("by role juga nanti
+  aksesnya"). Blocked on DevOps: subdomain + named owner emails must be registered at
+  `/auth/ui/apps` before this can be built — see `docs/REMEDIATION.md` `GLG-001`.
 
 ## Current State
 
 Backend serves admin-only routes as of Phase 5 (150/150 Vitest tests green — trimmed down from the
 prior count after deleting the public-route test files, offset by new RBAC-fix tests). Admin FE has
 zero automated tests (P8 Task 4 added the first: `LifecycleActionBar`, plus the Vitest+RTL infra
-itself — no further FE coverage added since). No CI/CD in either repo yet (Phase 7 of the active
-split plan). Uploads are still local-disk with relative URLs (Phase 6 will move them to GCS and
-rewrite the persisted URLs). `PROJECT.md`'s independent-review and final go-live gate for this repo
-are still open — paused pending the split plan's Phase 7 governance-doc refresh. Immediate next
-step: Phase 6 — move uploads to Google Cloud Storage.
+itself — no further FE coverage added since). Phase 7 (CI, two Dockerfiles/docker-compose already
+existed from the split; k8s docs, JWT_SECRET rename, governance-doc corrections) is made and
+verified but not yet committed — see Plan And Milestones above. Uploads are still local-disk with
+relative URLs (Phase 6, deferred by owner decision, will move them to GCS and rewrite the persisted
+URLs). Also pending (not yet implemented, just planned): migrating this repo's login to Apps Gateway
+SSO, admin-only — see the Key Decisions entry above and `docs/REMEDIATION.md` `GLG-001`.
+`PROJECT.md`'s independent-review and final go-live gate for this repo are still open — paused
+pending the split plan's Phase 7 governance-doc refresh. Immediate next step: commit Phase 7.
