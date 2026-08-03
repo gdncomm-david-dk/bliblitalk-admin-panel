@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { EventStatus, RegistrationStatus, Attendance, Role, ReminderKind, EmploymentType } from "./enums";
+import {
+  EventStatus,
+  RegistrationStatus,
+  Attendance,
+  Role,
+  ReminderKind,
+  EmploymentType,
+  SelectionMode,
+} from "./enums";
 
 // ---- Auth ----
 export const LoginInput = z.object({
@@ -66,6 +74,51 @@ export const SpeakerDTO = z.object({
 });
 export type SpeakerDTO = z.infer<typeof SpeakerDTO>;
 
+export const CreateSpeakerInput = z.object({
+  name: z.string().min(1, "Name is required"),
+  title: z.string().optional().nullable(),
+  company: z.string().optional().nullable(),
+  bioShort: z.string().optional().nullable(),
+  bioLong: z.string().optional().nullable(),
+  credentials: z.array(z.string()).optional().default([]),
+  avatarUrl: z.string().optional().nullable(),
+  featured: z.boolean().optional().default(false),
+});
+export type CreateSpeakerInput = z.infer<typeof CreateSpeakerInput>;
+
+export const UpdateSpeakerInput = CreateSpeakerInput.partial();
+export type UpdateSpeakerInput = z.infer<typeof UpdateSpeakerInput>;
+
+/** Speaker row for the admin management page — DTO plus usage count. */
+export const AdminSpeakerDTO = SpeakerDTO.extend({
+  eventCount: z.number().int(),
+});
+export type AdminSpeakerDTO = z.infer<typeof AdminSpeakerDTO>;
+
+export const CategoryDTO = z.object({
+  id: z.string(),
+  name: z.string(),
+  isActive: z.boolean(),
+});
+export type CategoryDTO = z.infer<typeof CategoryDTO>;
+
+export const CreateCategoryInput = z.object({
+  name: z.string().min(1, "Name is required"),
+});
+export type CreateCategoryInput = z.infer<typeof CreateCategoryInput>;
+
+export const UpdateCategoryInput = z.object({
+  name: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateCategoryInput = z.infer<typeof UpdateCategoryInput>;
+
+/** Category row for the admin management page — DTO plus usage count. */
+export const AdminCategoryDTO = CategoryDTO.extend({
+  eventCount: z.number().int(),
+});
+export type AdminCategoryDTO = z.infer<typeof AdminCategoryDTO>;
+
 // ---- Event detail-page content (CMS-editable) ----
 export const LearningPointDTO = z.object({
   icon: z.string(),
@@ -115,6 +168,29 @@ export const DEFAULT_DISPLAY_CONFIG: EventDisplayConfig = {
   certificate: true,
 };
 
+export const NextAutoTransition = z
+  .object({ to: z.nativeEnum(EventStatus), at: z.string() })
+  .nullable();
+export type NextAutoTransition = z.infer<typeof NextAutoTransition>;
+
+export const EventStatusHistoryDTO = z.object({
+  id: z.string(),
+  fromStatus: z.nativeEnum(EventStatus).nullable(),
+  toStatus: z.nativeEnum(EventStatus),
+  actorType: z.enum(["ADMIN", "SYSTEM"]),
+  actorId: z.string().nullable(),
+  reason: z.string().nullable(),
+  sideEffectsStatus: z.enum(["PENDING", "DONE", "FAILED", "NONE"]),
+  createdAt: z.string(),
+});
+export type EventStatusHistoryDTO = z.infer<typeof EventStatusHistoryDTO>;
+
+export const TransitionEventInput = z.object({
+  to: z.nativeEnum(EventStatus),
+  reason: z.string().optional(),
+});
+export type TransitionEventInput = z.infer<typeof TransitionEventInput>;
+
 export const EventDTO = z.object({
   id: z.string(),
   slug: z.string(),
@@ -125,6 +201,7 @@ export const EventDTO = z.object({
   thumbnailUrl: z.string().nullable(),
   description: z.string(),
   category: z.string(),
+  categoryId: z.string(),
   tags: z.array(z.string()),
   location: z.string(),
   startsAt: z.string(), // ISO string
@@ -154,6 +231,11 @@ export const EventDTO = z.object({
   recordingUrl: z.string().nullable(),
   presentationUrl: z.string().nullable(),
   displayConfig: EventDisplayConfig,
+  statusChangedAt: z.string(),
+  isOverdue: z.boolean(),
+  selectionMode: z.nativeEnum(SelectionMode),
+  registrationOpensAt: z.string().nullable(),
+  nextAutoTransition: NextAutoTransition,
 });
 export type EventDTO = z.infer<typeof EventDTO>;
 
@@ -298,7 +380,7 @@ export const AdminEventInput = z.object({
   bannerUrl: z.string().optional().nullable(),
   thumbnailUrl: z.string().optional().nullable(),
   description: z.string().min(1, "Description is required"),
-  category: z.string().min(1, "Category is required"),
+  categoryId: z.string().min(1, "Category is required"),
   tags: z.array(z.string()).optional().default([]),
   location: z.string().min(1, "Location is required"),
   startsAt: z.string().min(1, "Start time is required"),
@@ -319,9 +401,12 @@ export const AdminEventInput = z.object({
   importantNotes: z.string().optional().nullable(),
   learningPoints: z.array(LearningPointDTO).optional(),
   galleryImages: z.array(z.string()).optional(),
+  speakerIds: z.array(z.string()).optional(),
   recordingUrl: z.string().optional().nullable(),
   presentationUrl: z.string().optional().nullable(),
   displayConfig: EventDisplayConfig.partial().optional(),
+  selectionMode: z.nativeEnum(SelectionMode).optional(),
+  registrationOpensAt: z.string().optional().nullable(),
 });
 export type AdminEventInput = z.infer<typeof AdminEventInput>;
 

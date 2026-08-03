@@ -1,8 +1,13 @@
 import { useState } from "react";
-import type { AdminEventInput, EventDisplayConfig, EventDTO } from "@repo/shared-types";
+import type { AdminEventInput, EventDisplayConfig, EventDTO, SelectionMode } from "@repo/shared-types";
 import { api, ApiRequestError } from "../../../services/api";
 import { useToastStore } from "../../../store/toastStore";
 import { FIELD_CLASS } from "./fieldStyles";
+
+const SELECTION_OPTIONS = [
+  { value: "FCFS", label: "First-come-first-served", hint: "Registrations are auto-approved up to capacity." },
+  { value: "CURATED", label: "Curated (admin shortlists)", hint: "Registrations wait for admin shortlisting." },
+] as const;
 
 const DISPLAY_TOGGLES: { key: keyof EventDisplayConfig; label: string }[] = [
   { key: "pastEvent", label: "Display as Past Event" },
@@ -16,13 +21,13 @@ const DISPLAY_TOGGLES: { key: keyof EventDisplayConfig; label: string }[] = [
 export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () => void }) {
   const [capacity, setCapacity] = useState(String(event.capacity));
   const [waitingListEnabled, setWaitingListEnabled] = useState(event.waitingListEnabled);
-  const [shortlistRequired, setShortlistRequired] = useState(!event.showRemainingSeats);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(event.selectionMode);
+  const [showRemainingSeats, setShowRemainingSeats] = useState(event.showRemainingSeats);
   const [enableCertificate, setEnableCertificate] = useState(event.enableCertificate);
   const [enableFeedback, setEnableFeedback] = useState(event.enableFeedback);
   const [displayConfig, setDisplayConfig] = useState<EventDisplayConfig>(event.displayConfig);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [togglingRegistration, setTogglingRegistration] = useState(false);
   const showToast = useToastStore((s) => s.show);
 
   function toggleDisplay(key: keyof EventDisplayConfig, value: boolean) {
@@ -36,7 +41,8 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
       const payload: Partial<AdminEventInput> = {
         capacity: Number(capacity) || 0,
         waitingListEnabled,
-        showRemainingSeats: !shortlistRequired,
+        showRemainingSeats,
+        selectionMode,
         enableCertificate,
         enableFeedback,
         displayConfig,
@@ -51,46 +57,39 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
     }
   }
 
-  async function onToggleRegistration() {
-    setError(null);
-    setTogglingRegistration(true);
-    try {
-      const action = event.status === "REGISTRATION_CLOSED" ? "open-registration" : "close-registration";
-      await api.post(`/admin/events/${event.id}/${action}`);
-      showToast(action === "open-registration" ? "Registration reopened." : "Registration closed.");
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to update registration status.");
-    } finally {
-      setTogglingRegistration(false);
-    }
-  }
-
-  const canToggleRegistration = event.status === "PUBLISHED" || event.status === "REGISTRATION_CLOSED";
-
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-line bg-white p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ink">Registration</p>
-            <p className="text-xs text-muted">
-              {event.status === "REGISTRATION_CLOSED" ? "Registration is closed." : "Registration is open."}
-            </p>
-          </div>
-          <button
-            onClick={onToggleRegistration}
-            disabled={!canToggleRegistration || togglingRegistration}
-            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-40"
-          >
-            {event.status === "REGISTRATION_CLOSED" ? "Reopen Registration" : "Close Registration"}
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted">Capacity</label>
-            <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} className={FIELD_CLASS} />
+            <input
+              type="number"
+              min={0}
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              className={FIELD_CLASS}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="mb-1 block text-xs font-semibold text-muted">Selection Mode</label>
+          <div className="flex gap-3">
+            {SELECTION_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex-1 cursor-pointer rounded-lg border p-3 transition ${
+                  selectionMode === opt.value ? "border-primary bg-primary-50" : "border-line bg-surface hover:border-primary/40"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input type="radio" name="selectionMode" value={opt.value} checked={selectionMode === opt.value} onChange={() => setSelectionMode(opt.value)} />
+                  <span className="text-sm font-semibold text-ink">{opt.label}</span>
+                </span>
+                <span className="mt-1 block pl-6 text-xs text-muted">{opt.hint}</span>
+              </label>
+            ))}
           </div>
         </div>
 
@@ -100,8 +99,8 @@ export function SettingsTab({ event, onSaved }: { event: EventDTO; onSaved: () =
             Waitlist enabled
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={shortlistRequired} onChange={(e) => setShortlistRequired(e.target.checked)} />
-            Shortlist required (hides remaining-seats counter, every registrant waits for review)
+            <input type="checkbox" checked={showRemainingSeats} onChange={(e) => setShowRemainingSeats(e.target.checked)} />
+            Show remaining seat count to participants
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={enableCertificate} onChange={(e) => setEnableCertificate(e.target.checked)} />

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import dayjs from "dayjs";
 import { PrismaClient } from "@prisma/client";
+import { resolveSeedPassword } from "./seedConfig";
 
 const prisma = new PrismaClient();
 
@@ -15,8 +16,16 @@ async function main() {
   await prisma.speaker.deleteMany();
   await prisma.user.deleteMany();
 
+  // ---- Categories ----
+  // Owned by the seed itself (not just the migration's one-time INSERT) so this
+  // file is self-contained on any freshly-migrated database.
+  const CATEGORY_NAMES = ["Leadership", "Self Development", "Technology", "Career Growth", "Design"];
+  for (const name of CATEGORY_NAMES) {
+    await prisma.eventCategory.upsert({ where: { name }, update: {}, create: { name } });
+  }
+
   // ---- User ----
-  const passwordHash = bcrypt.hashSync("password123", 10);
+  const passwordHash = bcrypt.hashSync(resolveSeedPassword(process.env), 10);
   const demo = await prisma.user.create({
     data: {
       email: "demo@gdn-commerce.com",
@@ -98,13 +107,13 @@ async function main() {
         `Pressure doesn't always look like pressure. Sometimes it looks like productivity. Sometimes it looks like ambition. Sometimes it looks like smiling, showing up, and saying "I'm fine" — because stopping doesn't feel like an option.`,
         "This is not a wellness seminar or a motivational talk. It is a grounded, honest dialogue about what it means to stay human when the system keeps demanding more — drawing on behavioral insight, real organizational experience, and the courage to name what most people only think.",
       ].join("\n\n"),
-      category: "Leadership",
+      category: { connect: { name: "Leadership" } },
       tags: ["Leadership", "Self Development"],
       location: "Wing A Auditorium, Blibli HQ Sarana Jaya",
       startsAt: notLostStartsAt,
       endsAt: t("2026-08-13T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       hasSpeedDating: true,
       featured: true,
       registrationDeadline: t("2026-08-11T23:59:00"),
@@ -247,13 +256,13 @@ async function main() {
       title: "Learning How to Learn – Building a Career That Never Stops Growing",
       subtitle: "Building a Career That Never Stops Growing",
       description: "Building a Career That Never Stops Growing",
-      category: "Self Development",
+      category: { connect: { name: "Self Development" } },
       tags: ["Self Development"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: learningStartsAt,
       endsAt: t("2026-09-17T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       ...defaultMeta(learningStartsAt),
       speakers: { connect: [{ id: lilyane.id }, { id: josephine.id }] },
     },
@@ -266,13 +275,13 @@ async function main() {
       title: "AI in Everyday Work: From Hype to Impact",
       subtitle: "Practical AI for real productivity",
       description: "Turning AI hype into everyday impact for teams.",
-      category: "Technology",
+      category: { connect: { name: "Technology" } },
       tags: ["Technology"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: aiStartsAt,
       endsAt: t("2026-10-02T20:30:00"),
       capacity: 200,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       ...defaultMeta(aiStartsAt),
       speakers: { connect: [{ id: rangga.id }] },
     },
@@ -285,16 +294,17 @@ async function main() {
       slug: "building-influence-as-a-leader",
       title: "Building Influence as a Leader",
       description: "Grow your leadership influence without authority.",
-      category: "Leadership",
+      category: { connect: { name: "Leadership" } },
       tags: ["Leadership"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: influenceStartsAt,
       endsAt: t("2026-10-15T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       // Shortlist-only: seat count hidden; every registrant waits to be shortlisted.
       showRemainingSeats: false,
+      selectionMode: "CURATED",
       ...defaultMeta(influenceStartsAt),
     },
   });
@@ -304,13 +314,13 @@ async function main() {
       slug: "future-of-work-skills",
       title: "The Future of Work: Skills You Need",
       description: "The skills that will matter most in the next decade.",
-      category: "Career Growth",
+      category: { connect: { name: "Career Growth" } },
       tags: ["Career Growth"],
       location: "Online (Zoom)",
       startsAt: futureOfWorkStartsAt,
       endsAt: t("2026-10-29T20:30:00"),
       capacity: 500,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       ...defaultMeta(futureOfWorkStartsAt),
     },
@@ -321,13 +331,13 @@ async function main() {
       slug: "mindset-for-continuous-growth",
       title: "Mindset for Continuous Growth",
       description: "Cultivating a growth mindset that compounds.",
-      category: "Self Development",
+      category: { connect: { name: "Self Development" } },
       tags: ["Self Development"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: mindsetStartsAt,
       endsAt: t("2026-11-05T20:30:00"),
       capacity: 150,
-      status: "PUBLISHED",
+      status: "REGISTRATION_OPEN",
       recommended: true,
       ...defaultMeta(mindsetStartsAt),
     },
@@ -341,7 +351,7 @@ async function main() {
       title: "Breaking Fast, Breaking Ideas – Inside the Making of Award-Winning Creative Work",
       subtitle: "Inside the Making of Award-Winning Creative Work",
       description: "Inside the Making of Award-Winning Creative Work",
-      category: "Design",
+      category: { connect: { name: "Design" } },
       tags: ["Design", "Leadership"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: breakingStartsAt,
@@ -360,7 +370,7 @@ async function main() {
       title: "Kartini Masa Gitu? – Redefining Women Leadership Beyond Labels, Expectations, and Stereotypes",
       subtitle: "Redefining Women Leadership Beyond Labels, Expectations, and Stereotypes",
       description: "Redefining Women Leadership Beyond Labels, Expectations, and Stereotypes",
-      category: "Leadership",
+      category: { connect: { name: "Leadership" } },
       tags: ["Leadership"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: kartiniStartsAt,
@@ -379,7 +389,7 @@ async function main() {
       title: "Love (Hate) Work Relationship – Finding Passion, Purpose, and Staying in Love with Your Work",
       subtitle: "Finding Passion, Purpose, and Staying in Love with Your Work",
       description: "Finding Passion, Purpose, and Staying in Love with Your Work",
-      category: "Self Development",
+      category: { connect: { name: "Self Development" } },
       tags: ["Self Development"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: loveHateStartsAt,
@@ -438,13 +448,66 @@ async function main() {
     data: { ownerId: eventAdmin.id },
   });
   await prisma.event.updateMany({
-    where: { status: "PUBLISHED" },
+    where: { status: "REGISTRATION_OPEN" },
     data: { publishedAt: t("2026-05-01T09:00:00") },
   });
+
+  // ---- Lifecycle backfill: one synthetic EventStatusHistory row per non-DRAFT
+  // seed event, mirroring the P7 migration's Steps B/C so local dev stays
+  // consistent across every reseed (seed.ts wipes and recreates all events).
+  const registrationOpenEvents = await prisma.event.findMany({
+    where: { status: "REGISTRATION_OPEN" },
+    select: { id: true, publishedAt: true },
+  });
+  const completedEvents = await prisma.event.findMany({
+    where: { status: "COMPLETED" },
+    select: { id: true, endsAt: true, autoCompleteAfterMinutes: true },
+  });
+
+  for (const e of registrationOpenEvents) {
+    await prisma.event.update({
+      where: { id: e.id },
+      data: { statusChangedAt: e.publishedAt ?? new Date() },
+    });
+  }
+  for (const e of completedEvents) {
+    await prisma.event.update({
+      where: { id: e.id },
+      data: { statusChangedAt: dayjs(e.endsAt).add(e.autoCompleteAfterMinutes, "minute").toDate() },
+    });
+  }
+
+  await prisma.eventStatusHistory.createMany({
+    data: [
+      ...registrationOpenEvents.map((e) => ({
+        id: `histbf_${e.id}`,
+        eventId: e.id,
+        fromStatus: null,
+        toStatus: "REGISTRATION_OPEN" as const,
+        actorType: "SYSTEM",
+        actorId: null,
+        reason: "backfill",
+        sideEffectsStatus: "NONE",
+        createdAt: e.publishedAt ?? new Date(),
+      })),
+      ...completedEvents.map((e) => ({
+        id: `histbf_${e.id}`,
+        eventId: e.id,
+        fromStatus: null,
+        toStatus: "COMPLETED" as const,
+        actorType: "SYSTEM",
+        actorId: null,
+        reason: "backfill",
+        sideEffectsStatus: "DONE",
+        createdAt: dayjs(e.endsAt).add(e.autoCompleteAfterMinutes, "minute").toDate(),
+      })),
+    ],
+  });
+
   // Demo the seat-visibility toggle: hide the remaining-seats counter on one event.
   await prisma.event.update({
     where: { id: learning.id },
-    data: { showRemainingSeats: false },
+    data: { showRemainingSeats: false, selectionMode: "CURATED" },
   });
 
   // ---- Certificates (attended events) ----

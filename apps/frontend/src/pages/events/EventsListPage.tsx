@@ -7,39 +7,43 @@ import { api, ApiRequestError } from "../../services/api";
 import { StatusBadge } from "../../components/StatusBadge";
 import { SearchIcon } from "../../components/icons";
 
-type StatusFilter = "DRAFT" | "PUBLISHED" | "REGISTRATION_CLOSED" | "COMPLETED" | "CANCELLED" | "upcoming" | "ongoing";
+type StatusFilter =
+  | "DRAFT"
+  | "PUBLISHED"
+  | "REGISTRATION_OPEN"
+  | "REGISTRATION_CLOSED"
+  | "ONGOING"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "ARCHIVED"
+  | "upcoming";
 
 const FILTER_TITLES: Record<StatusFilter, string> = {
   DRAFT: "Draft Events",
   PUBLISHED: "Published Events",
+  REGISTRATION_OPEN: "Registration Open",
   REGISTRATION_CLOSED: "Registration Closed",
+  ONGOING: "Ongoing Events",
   COMPLETED: "Completed Events",
-  CANCELLED: "Archived Events",
+  CANCELLED: "Cancelled Events",
+  ARCHIVED: "Archived Events",
   upcoming: "Upcoming Events",
-  ongoing: "Ongoing Events",
 };
 
 const STATUS_PILLS: { value: StatusFilter | null; label: string }[] = [
   { value: null, label: "All" },
   { value: "DRAFT", label: "Draft" },
   { value: "upcoming", label: "Upcoming" },
-  { value: "ongoing", label: "Ongoing" },
+  { value: "ONGOING", label: "Ongoing" },
   { value: "COMPLETED", label: "Completed" },
-  { value: "CANCELLED", label: "Archived" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "ARCHIVED", label: "Archived" },
 ];
 
 function matchesFilter(e: EventDTO, filter: StatusFilter | null): boolean {
   if (!filter) return true;
-  const now = dayjs();
   if (filter === "upcoming") {
-    return (e.status === "PUBLISHED" || e.status === "REGISTRATION_CLOSED") && dayjs(e.startsAt).isAfter(now);
-  }
-  if (filter === "ongoing") {
-    return (
-      (e.status === "PUBLISHED" || e.status === "REGISTRATION_CLOSED") &&
-      dayjs(e.startsAt).isBefore(now) &&
-      dayjs(e.endsAt).isAfter(now)
-    );
+    return e.status === "PUBLISHED" || e.status === "REGISTRATION_OPEN" || e.status === "REGISTRATION_CLOSED";
   }
   return e.status === filter;
 }

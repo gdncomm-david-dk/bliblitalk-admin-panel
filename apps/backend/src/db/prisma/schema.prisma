@@ -26,9 +26,17 @@ enum RegistrationStatus {
 enum EventStatus {
   DRAFT
   PUBLISHED
+  REGISTRATION_OPEN
   REGISTRATION_CLOSED
+  ONGOING
   COMPLETED
   CANCELLED
+  ARCHIVED
+}
+
+enum SelectionMode {
+  FCFS
+  CURATED
 }
 
 enum Attendance {
@@ -61,6 +69,10 @@ model User {
   institution       String?
   yearsOfExperience String?
   passwordHash      String
+  // SEC-007: bumped on logout and on role/employment-type change; requireAuth rejects any
+  // token whose embedded tokenVersion no longer matches this column, so a leaked or
+  // still-cached token stops working immediately instead of staying valid for its full life.
+  tokenVersion  Int            @default(0)
   registrations Registration[]
   certificates  Certificate[]
   feedbacks     Feedback[]
@@ -84,6 +96,14 @@ model Speaker {
   events      Event[]  @relation("EventSpeakers")
 }
 
+model EventCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.Citext
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  events    Event[]
+}
+
 model Event {
   id                   String         @id @default(cuid())
   slug                 String         @unique
@@ -94,13 +114,20 @@ model Event {
   // Small poster/card image for list views; falls back to bannerUrl when unset.
   thumbnailUrl         String?
   description          String
-  category             String
+  categoryId           String
+  category             EventCategory  @relation(fields: [categoryId], references: [id])
   tags                 String[]       @default([])
   location             String
   startsAt             DateTime
   endsAt               DateTime
   capacity             Int            @default(0)
   status               EventStatus    @default(DRAFT)
+  statusChangedAt          DateTime          @default(now())
+  isOverdue                Boolean           @default(false)
+  gracePeriodMinutes       Int               @default(120)
+  autoCompleteAfterMinutes Int               @default(2880)
+  selectionMode            SelectionMode     @default(FCFS)
+  statusHistory            EventStatusHistory[]
   hasSpeedDating       Boolean        @default(false)
   featured             Boolean        @default(false)
   recommended          Boolean        @default(false)
@@ -139,6 +166,11 @@ model Event {
   // Users who administer this event (EVENT_ADMIN scope).
   admins               User[]         @relation("EventAdmins")
   reminders            EventReminder[]
+
+  @@index([status, registrationOpensAt])
+  @@index([status, registrationDeadline])
+  @@index([status, startsAt])
+  @@index([status, endsAt])
 }
 
 model Registration {
@@ -157,6 +189,7 @@ model Registration {
   createdAt     DateTime                 @default(now())
 
   @@unique([userId, eventId])
+  @@index([eventId, status])
 }
 
 model SpeedDatingRegistration {
@@ -282,4 +315,19 @@ model EventReminder {
   failedCount            Int          @default(0)
   createdAt              DateTime     @default(now())
   event                  Event        @relation(fields: [eventId], references: [id])
+}
+
+model EventStatusHistory {
+  id                String       @id @default(cuid())
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId           String
+  fromStatus        EventStatus?
+  toStatus          EventStatus
+  actorType         String       // "ADMIN" | "SYSTEM"
+  actorId           String?
+  reason            String?
+  sideEffectsStatus String       @default("PENDING") // PENDING | DONE | FAILED | NONE
+  createdAt         DateTime     @default(now())
+
+  @@index([eventId, createdAt])
 }

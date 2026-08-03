@@ -10,3 +10,6 @@ playwright-report/
 test-results/
 .turbo/
 apps/backend/uploads/
+
+# Generated design-doc PDF — on-demand derivative of docs/DESIGN.md, regenerate to distribute
+docs/*.pdf

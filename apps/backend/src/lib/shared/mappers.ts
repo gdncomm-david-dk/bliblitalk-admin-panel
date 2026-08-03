@@ -2,6 +2,8 @@ import type {
   Announcement,
   Certificate,
   Event,
+  EventCategory,
+  EventStatusHistory,
   Feedback,
   Registration,
   Speaker,
@@ -14,12 +16,14 @@ import type {
   DiscussionPointDTO,
   EventDisplayConfig,
   EventDTO,
+  EventStatusHistoryDTO,
   FaqItemDTO,
   LearningPointDTO,
   MyEventDTO,
+  NextAutoTransition,
   SpeakerDTO,
 } from "@repo/shared-types";
-import { DEFAULT_DISPLAY_CONFIG } from "@repo/shared-types";
+import { DEFAULT_DISPLAY_CONFIG, EventStatus } from "@repo/shared-types";
 
 export function toSpeakerDTO(s: Speaker): SpeakerDTO {
   return {
@@ -37,6 +41,7 @@ export function toSpeakerDTO(s: Speaker): SpeakerDTO {
 
 type EventWithRelations = Event & {
   speakers: Speaker[];
+  category: EventCategory;
   _count?: { registrations: number };
 };
 
@@ -50,6 +55,36 @@ function asDisplayConfig(value: unknown): EventDisplayConfig {
   return { ...DEFAULT_DISPLAY_CONFIG, ...(value as Partial<EventDisplayConfig>) };
 }
 
+/**
+ * Display-only hint for the FE: the next time-based transition the scheduler
+ * (P2) will make and when. P1 computes it from timestamps for the FE countdown;
+ * it never drives the badge (the badge mirrors stored status + isOverdue).
+ */
+function computeNextAutoTransition(e: {
+  status: EventStatus;
+  registrationOpensAt: Date | null;
+  registrationDeadline: Date | null;
+  startsAt: Date;
+  endsAt: Date;
+}): NextAutoTransition {
+  switch (e.status) {
+    case EventStatus.PUBLISHED:
+      return e.registrationOpensAt
+        ? { to: EventStatus.REGISTRATION_OPEN, at: e.registrationOpensAt.toISOString() }
+        : null;
+    case EventStatus.REGISTRATION_OPEN:
+      return e.registrationDeadline
+        ? { to: EventStatus.REGISTRATION_CLOSED, at: e.registrationDeadline.toISOString() }
+        : null;
+    case EventStatus.REGISTRATION_CLOSED:
+      return { to: EventStatus.ONGOING, at: e.startsAt.toISOString() };
+    case EventStatus.ONGOING:
+      return { to: EventStatus.COMPLETED, at: e.endsAt.toISOString() };
+    default:
+      return null;
+  }
+}
+
 export function toEventDTO(e: EventWithRelations): EventDTO {
   return {
     id: e.id,
@@ -60,7 +95,8 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     bannerUrl: e.bannerUrl,
     thumbnailUrl: e.thumbnailUrl,
     description: e.description,
-    category: e.category,
+    category: e.category.name,
+    categoryId: e.categoryId,
     tags: e.tags,
     location: e.location,
     startsAt: e.startsAt.toISOString(),
@@ -90,6 +126,24 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     recordingUrl: e.recordingUrl,
     presentationUrl: e.presentationUrl,
     displayConfig: asDisplayConfig(e.displayConfig),
+    statusChangedAt: e.statusChangedAt.toISOString(),
+    isOverdue: e.isOverdue,
+    selectionMode: e.selectionMode,
+    registrationOpensAt: e.registrationOpensAt?.toISOString() ?? null,
+    nextAutoTransition: computeNextAutoTransition(e),
+  };
+}
+
+export function toEventStatusHistoryDTO(h: EventStatusHistory): EventStatusHistoryDTO {
+  return {
+    id: h.id,
+    fromStatus: h.fromStatus,
+    toStatus: h.toStatus,
+    actorType: h.actorType as "ADMIN" | "SYSTEM",
+    actorId: h.actorId,
+    reason: h.reason,
+    sideEffectsStatus: h.sideEffectsStatus as "PENDING" | "DONE" | "FAILED" | "NONE",
+    createdAt: h.createdAt.toISOString(),
   };
 }
 

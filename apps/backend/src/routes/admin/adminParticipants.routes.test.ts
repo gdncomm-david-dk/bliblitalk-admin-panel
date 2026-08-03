@@ -24,7 +24,7 @@ describe("admin participants", () => {
         slug: TEST_SLUG,
         title: "Participants Test Event",
         description: "test",
-        category: "Technology",
+        category: { connect: { name: "Technology" } },
         location: "Online",
         startsAt: new Date(),
         endsAt: new Date(),

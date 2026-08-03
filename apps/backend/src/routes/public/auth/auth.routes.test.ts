@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, afterEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../../../app";
 import { prisma } from "../../../db/client";
+import { config } from "../../../config";
 
 const REG_EMAIL = "signup-test@example.com";
 
@@ -165,5 +166,73 @@ describe("auth", () => {
       .send({ email: REG_EMAIL, name: "New Microsoft User" });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe("NO_ADMIN_ACCOUNT");
+  });
+
+  it("SEC-007: logout revokes the session — the same cookie is rejected afterward", async () => {
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "demo@gdn-commerce.com", password: "password123" });
+    const setCookieHeader = (login.headers["set-cookie"] as unknown as string[])[0]!;
+    const cookie = setCookieHeader.split(";")[0]!;
+
+    const stillValid = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(stillValid.status).toBe(200);
+
+    await request(app).post("/api/auth/logout").set("Cookie", cookie);
+
+    const afterLogout = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(afterLogout.status).toBe(401);
+  });
+});
+
+describe("SEC-001/SEC-002: mock providers are blocked in production", () => {
+  afterEach(() => {
+    config.isProd = false;
+  });
+
+  it("blocks /api/auth/google once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp)
+      .post("/api/auth/google")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(404);
+  });
+
+  it("blocks /api/auth/microsoft once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp)
+      .post("/api/auth/microsoft")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(404);
+  });
+
+  it("still allows the mock providers once isProd is false again", async () => {
+    config.isProd = true;
+    config.isProd = false; // exercise the toggle back before asserting normal behavior
+    const devApp = createApp();
+    const res = await request(devApp)
+      .post("/api/auth/google")
+      .send({ email: "superadmin@gdn-commerce.com", name: "Super Admin" });
+    expect(res.status).toBe(200);
+  });
+
+  it("SEC-024: blocks /api/auth/register with provider: 'google' once NODE_ENV=production", async () => {
+    config.isProd = true;
+    const prodApp = createApp();
+    const res = await request(prodApp).post("/api/auth/register").send({
+      fullName: "Google Person",
+      email: "sec-024-prod-bypass@example.com",
+      provider: "google",
+      phone: "+62 813 0000 0001",
+    });
+    expect(res.status).toBe(404);
+
+    // No account was created by the blocked attempt.
+    const created = await prisma.user.findUnique({
+      where: { email: "sec-024-prod-bypass@example.com" },
+    });
+    expect(created).toBeNull();
   });
 });

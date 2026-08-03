@@ -37,7 +37,7 @@ describe("admin feedback aggregate", () => {
         slug: TEST_SLUG,
         title: "Admin Feedback Test Event",
         description: "test",
-        category: "Technology",
+        category: { connect: { name: "Technology" } },
         location: "Online",
         startsAt: new Date(),
         endsAt: new Date(),
@@ -112,7 +112,7 @@ describe("admin registration open/close toggle", () => {
         slug: TEST_SLUG,
         title: "Admin Feedback Test Event",
         description: "test",
-        category: "Technology",
+        category: { connect: { name: "Technology" } },
         location: "Online",
         startsAt: new Date(),
         endsAt: new Date(),
@@ -131,8 +131,17 @@ describe("admin registration open/close toggle", () => {
     return agent;
   }
 
-  it("closes then reopens registration", async () => {
+  // Under the 8-state transition table (packages/shared-types/src/lifecycle.ts),
+  // "close registration" (-> REGISTRATION_CLOSED) is only legal from REGISTRATION_OPEN,
+  // and "open/reopen registration" (-> REGISTRATION_OPEN) is legal from PUBLISHED or
+  // REGISTRATION_CLOSED. The fixture event starts PUBLISHED, so registration must be
+  // opened before it can be closed.
+  it("opens, closes, then reopens registration", async () => {
     const agent = await loginAsSuperAdmin();
+
+    const opened = await agent.post(`/api/admin/events/${eventId}/open-registration`);
+    expect(opened.status).toBe(200);
+    expect(opened.body.status).toBe("REGISTRATION_OPEN");
 
     const closed = await agent.post(`/api/admin/events/${eventId}/close-registration`);
     expect(closed.status).toBe(200);
@@ -140,13 +149,14 @@ describe("admin registration open/close toggle", () => {
 
     const reopened = await agent.post(`/api/admin/events/${eventId}/open-registration`);
     expect(reopened.status).toBe(200);
-    expect(reopened.body.status).toBe("PUBLISHED");
+    expect(reopened.body.status).toBe("REGISTRATION_OPEN");
   });
 
-  it("refuses to close registration on a non-published event", async () => {
+  it("refuses to close registration when it isn't open for registration", async () => {
     await prisma.event.update({ where: { id: eventId }, data: { status: "DRAFT" } });
     const agent = await loginAsSuperAdmin();
     const res = await agent.post(`/api/admin/events/${eventId}/close-registration`);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
   });
 });

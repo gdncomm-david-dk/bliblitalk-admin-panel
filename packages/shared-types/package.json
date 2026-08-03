@@ -10,7 +10,7 @@
   },
   "scripts": {
     "lint": "eslint src",
-    "test": "echo \"no tests\" && exit 0"
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "^3.23.0"
@@ -19,6 +19,7 @@
     "@repo/eslint-config": "workspace:*",
     "@repo/tsconfig": "workspace:*",
     "eslint": "^8.57.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.6"
   }
 }

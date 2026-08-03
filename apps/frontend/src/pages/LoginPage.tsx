@@ -81,20 +81,28 @@ export function LoginPage() {
 
       {mode === "choice" ? (
         <div className="mt-6 space-y-4">
-          <button
-            onClick={onMicrosoft}
-            disabled={msBusy}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-primary/40 bg-white text-sm font-semibold text-primary transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <MicrosoftGlyph />
-            {msBusy ? "Connecting…" : "Continue with Microsoft"}
-          </button>
+          {/* SEC-001: the backend's /auth/microsoft is an unauthenticated mock (no real
+              Entra ID/OIDC verification) and is blocked outright once NODE_ENV=production
+              (see auth.routes.ts's mockProviderGate) — never show this button outside dev,
+              matching the demo-credentials hint below. */}
+          {import.meta.env.DEV && (
+            <button
+              onClick={onMicrosoft}
+              disabled={msBusy}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-primary/40 bg-white text-sm font-semibold text-primary transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <MicrosoftGlyph />
+              {msBusy ? "Connecting…" : "Continue with Microsoft"}
+            </button>
+          )}
 
-          <div className="flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-line" />
-            or sign in with email
-            <span className="h-px flex-1 bg-line" />
-          </div>
+          {import.meta.env.DEV && (
+            <div className="flex items-center gap-3 text-xs text-muted">
+              <span className="h-px flex-1 bg-line" />
+              or sign in with email
+              <span className="h-px flex-1 bg-line" />
+            </div>
+          )}
 
           <button onClick={() => setMode("email")} className={AUTH_PRIMARY_BTN}>
             Sign In with Email

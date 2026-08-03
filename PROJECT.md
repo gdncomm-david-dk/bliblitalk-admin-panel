@@ -1,0 +1,126 @@
+# PROJECT.md
+
+Go-live review dossier for this tool. Reviewers and approvers read this file before the tool is released to others. Complete it via the `project-documenter` skill before pushing to GitHub or going live. Fields marked **(owner input)** must come from the project owner; never invent them. Keep this file updated when facts change: a material change to risk level, data used, or access scope may trigger re-review.
+
+## Problem Being Solved
+
+<!-- What problem this tool solves and for whom. One short paragraph. -->
+
+## Project Owner
+
+<!-- (owner input) Person or team requesting and responsible for the tool. -->
+
+## Support Contact
+
+<!-- (owner input) Person or team contacted when issues occur. -->
+
+## Vibe Start
+
+2026-07-13 (stamped by `/adopt-vibe` from the earliest git commit date, per that skill's rule for
+brownfield projects.)
+
+## Label
+
+<!-- (owner input) GCP labels for cost and budget management. Provide all three below.
+- Company: exactly one of gdn, gdpu, gdpa, gdv, gdr, gtn, gan, gdnus, gdni, rise, gem (owning sister company).
+- Division: exactly one of operations, finance, marketing, commercial.
+- Department: free text — the owning department name (non-empty), recorded in lowercase.
+Asked during /start-vibe; /vibe-check will not pass while Company or Division is empty/invalid or Department is empty. -->
+
+- Company:
+- Division:
+- Department:
+
+## Design Overview
+
+<!-- Simple design overview: main components, data flow, key integrations. Detail lives in docs/ARCHITECTURE.md; the full design-review document (diagrams, transaction flows, database schema, external connections, financial-risk analysis) lives in docs/DESIGN.md. Keep this reviewer-readable. -->
+
+## Risk Level
+
+<!-- (owner input, confirm) Low / Medium / High per the Non-Tech Change Management playbook.
+Low: small personal tool, no sensitive data.
+Medium: used by a team, connects to company systems, uses internal company data, automates regular work, or affects team decisions.
+High: accessible outside the company or internet-facing, handles payments or money, uses sensitive personal or company data, or supports critical business processes.
+A tool is not automatically Low just because it is small. When in doubt, consult Information Security. -->
+
+**High** — classified 2026-07-24 by Claude via `golive-gate:assess-risk-level`.
+
+Matched criterion: *accessible outside the company or internet-facing* (owner-confirmed).
+
+Answer verification (per `data/risk-criteria.json`'s interview):
+- **users** — team + external participants. CONFIRMED: RBAC roles `SUPER_ADMIN`/`EVENT_ADMIN`/`HR_TA`/`VIEWER`/`PARTICIPANT` (`packages/shared-types/src/enums.ts`), shared deployment config (`k8s/README.md`, `docker-compose.yml`).
+- **systems** — connects to company systems. CONFIRMED: Postgres via Prisma, SMTP mailer for marketing/reminder emails (`apps/backend/src/config.ts` `smtp` block).
+- **data** — internal + participant personal data (name, email, phone, institution, department, position, years of experience). CONFIRMED via `schema.prisma` `User` model. No KTP/payroll/financial fields found — per the playbook's `personalDataRule`, this alone would not reach High, but combines with the exposure criterion below.
+- **automation** — automates regular work. CONFIRMED: `sweepEventLifecycle` and `sweepDueReminders` (60s interval sweeps, `apps/backend/src/index.ts`), marketing email campaigns (`adminMarketing.service.ts`).
+- **exposure** — **owner-confirmed: Yes**, the companion `bliblitalk-user-fe` participant portal is meant to be reachable by external event participants (not just gdn-commerce staff), e.g. via Google OAuth registration. This is the criterion that sets the High tier (owner confirmation governs per `exposureRule`; consistent with the code — participant registration has no company-domain restriction, unlike the admin CMS's Microsoft-SSO-gated login).
+- **money** — no payment/checkout code found anywhere in the codebase (confirmed during the `docs/DESIGN.md` financial-surface review). Not a High trigger by itself.
+- **criticality** — **owner-confirmed: No**, not a critical business process; events could run with manual workarounds if the tool broke. Not a High trigger by itself — High is reached via the exposure criterion alone.
+
+Per the High tier's requirements (see Go-Live Steps below): formal review and approval, monitoring, recovery procedures, and an independent (non-builder) reviewer are all still outstanding as of this classification.
+
+## Access Status
+
+External — the companion `bliblitalk-user-fe` participant portal is designed to be reachable by people outside gdn-commerce (event participants/job-seekers registering via Google OAuth). The admin CMS (`bliblitalk-admin`, this repo) itself is intended for internal staff only, gated behind Microsoft SSO — but the shared backend/database this repo owns is the same trust boundary the external-facing portal talks to via its public API, which is why the High classification above applies to this repo too. Currently **not deployed anywhere** (local-only, confirmed 2026-07-24) — this section describes the intended access pattern once live, not current reachability.
+
+## Data Used
+
+Internal / Participant Personal Data. Datasets: registrant/participant records (name, email, phone, institution, department, position, years of experience — `User` table), event data, registrations, feedback, certificates. Source: this repo's own Postgres database (no external data source). No KTP, payroll, health, or financial-account data is collected or stored anywhere in the schema.
+
+## Data That Must Not Be Entered
+
+KTP/NIK, payroll or salary data, financial account data, health data, passwords or access codes for other systems, or any other confidential company information — none of these fields exist in the current schema; this is a standing constraint on future changes, not a description of data already present.
+
+## Login Method
+
+Admin CMS (this repo): Microsoft SSO (Apps Gateway-equivalent) — currently a **mock** implementation gated behind `!config.isProd` (see `docs/REMEDIATION.md` SEC-001/GLG-001; real Entra ID/OIDC verification is not yet implemented). Participant-facing login (consumed by `bliblitalk-user-fe` via this repo's public API): Google OAuth — also currently a **mock** implementation gated the same way (SEC-002). Neither is a real, verified SSO/OAuth integration yet — this is the GLG-001 blocking finding in `docs/REMEDIATION.md`.
+
+## Access Levels
+
+Role-based access control via `@repo/auth`'s permission matrix: `SUPER_ADMIN` (full access, including staff account provisioning and role management), `EVENT_ADMIN` (scoped to their own assigned events — participants, registrations, workspace tabs), `HR_TA` (Talent Acquisition, registrant/candidate visibility), `VIEWER` (read-only), `PARTICIPANT` (self-service registration and event participation only, no admin access). Enforced server-side via `requireAuth`/`requirePermission`/`requireRole` middleware on every admin route — required detail for High risk (per the risk criteria).
+
+## Access Approval Process
+
+<!-- (owner input) Who approves access requests and how. -->
+
+## Go-Live Steps
+
+<!-- Deployment route and the approvals required for this risk level. Low: owner check. Medium: independent review. High: Architecture, SRE, and Information Security approval. -->
+
+Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
+
+**Requirements:**
+- [ ] Formal review and approval required before go-live
+- [ ] Monitoring in place
+- [ ] Recovery procedures mandatory
+- [x] Access levels and permissions defined (see Access Levels above)
+- [ ] Independent reviewer (not the builder) — every commit in this repo has Claude as co-author, so this cannot be self-certified; see Task 6 of the P8 plan
+
+**Approvals needed:**
+- [ ] Tech R&D / Architecture
+- [ ] SRE
+- [ ] Information Security
+- [ ] GRC (as applicable)
+
+## Review Evidence
+
+<!-- (owner input) Who reviewed, when, and the sign-off record (approval email, review notes). Required before go-live for Medium and High risk. -->
+
+- **2026-07-24 — Information Security sign-off (David Kurniawan) — 3 BLOCKING waivers:**
+  - **GLG-001** (login method is not real SSO/OAuth): waived for the current pre-deployment/dev milestone only. Owner's stated condition: "its okay, because its mockup only, but in reality (production) will use real SSO gateway" — real Apps Gateway SSO / verified Google OAuth is still required before any actual production deployment; this finding is re-opened at that point. See `docs/REMEDIATION.md` GLG-001.
+  - **DEP-002** (png-js undeclared license metadata): waived — shipped `LICENSE` manually verified as MIT. See `docs/REMEDIATION.md` DEP-002.
+  - **DEP-003** (caniuse-lite CC-BY-4.0, unlisted): waived — attribution-only, build-time-only dependency. See `docs/REMEDIATION.md` DEP-003.
+- **GLG-002** (repo outside approved GitHub org): not a waiver — owner decided 2026-07-24 to migrate this repo (and `bliblitalk-user-fe`) to the `gdncomm-ops` org. Execution pending owner action (no `gh` CLI/API token available in the agent's environment to do it directly). See `docs/REMEDIATION.md` GLG-002.
+
+## Security Notes
+
+<!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
+
+Remediation backlog: docs/REMEDIATION.md — 1 BLOCKING open (GLG-002, migration decided/pending) / 1 BLOCKING fixed-not-yet-committed (SEC-024, /auth/register auth bypass, found 2026-07-24 via bliblitalk-user-fe's cross-repo audit, fixed same day) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
+
+## Hosting Location
+
+<!-- The approved company platform where the tool runs. Personal or public platforms require formal approval. -->
+
+## Recovery Procedures
+
+<!-- Rollback and restore steps: how to return to the previous working version. Mandatory for Medium and High risk. -->
