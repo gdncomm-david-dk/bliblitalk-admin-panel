@@ -16,35 +16,39 @@ export const LoginInput = z.object({
 });
 export type LoginInput = z.infer<typeof LoginInput>;
 
-// Mock Google sign-in. In production the client sends a verified OAuth token;
-// the mock passes the identity the provider would have returned.
-export const GoogleAuthInput = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-});
-export type GoogleAuthInput = z.infer<typeof GoogleAuthInput>;
-
-// Mock Microsoft Entra ID (Azure AD) sign-in — Admin CMS SSO. Same shape as the
-// Google mock; a real integration verifies the token and reads these same claims.
+// Mock Microsoft Entra ID (Azure AD) sign-in — Admin CMS SSO. A real integration
+// verifies the token and reads these same claims.
 export const MicrosoftAuthInput = z.object({
   email: z.string().email(),
   name: z.string().min(1),
 });
 export type MicrosoftAuthInput = z.infer<typeof MicrosoftAuthInput>;
 
-// Self-registration for participants. Email registrations set a password; Google
-// registrations omit it (identity is federated).
+// Self-registration for participants. No password: since the 2026-08 change,
+// bliblitalk-user-fe authenticates participants purely by emailed one-time code, so
+// registration collects the profile and then issues the first OTP.
 export const RegisterInput = z.object({
   fullName: z.string().min(1, "Full name is required"),
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters").optional(),
-  provider: z.enum(["email", "google"]).optional().default("email"),
   phone: z.string().min(1, "Phone number is required"),
   institution: z.string().optional().nullable(),
   role: z.string().optional().nullable(),
   yearsOfExperience: z.string().optional().nullable(),
 });
 export type RegisterInput = z.infer<typeof RegisterInput>;
+
+// Email one-time-code login (bliblitalk-user-fe). Requesting a code invalidates any
+// prior unconsumed one; verifying it issues the session.
+export const OtpRequestInput = z.object({
+  email: z.string().email(),
+});
+export type OtpRequestInput = z.infer<typeof OtpRequestInput>;
+
+export const OtpVerifyInput = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type OtpVerifyInput = z.infer<typeof OtpVerifyInput>;
 
 // ---- Core DTOs (API response contracts) ----
 export const UserDTO = z.object({

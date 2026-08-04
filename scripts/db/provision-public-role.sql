@@ -1,6 +1,6 @@
 -- Provisions (idempotently) the restricted Postgres role the public backend
 -- (bliblitalk-user-fe) connects as. Least privilege per the split plan decision #3:
--- SELECT broadly, INSERT/UPDATE only on the six participant-owned tables. Everything
+-- SELECT broadly, INSERT/UPDATE only on the seven participant-owned tables. Everything
 -- else — admin tables, DDL, DELETE anywhere — stays unreachable from this role.
 --
 -- Run via provision-public-role.sh, which supplies :'pubapp_password' from an env var —
@@ -25,7 +25,15 @@ GRANT USAGE ON SCHEMA public TO bliblitalk_public;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO bliblitalk_public;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO bliblitalk_public;
 
--- Write access limited to the six participant-owned tables (decision #3). No DELETE
+-- Write access limited to the seven participant-owned tables (decision #3). No DELETE
 -- anywhere, and no INSERT/UPDATE on any other table, including every admin-owned one.
-GRANT INSERT, UPDATE ON "User", "Registration", "SpeedDatingRegistration", "Feedback", "Certificate", "SiteSettings"
+--
+-- OtpChallenge (added 2026-08 with email-OTP login) is written by the public backend on
+-- every code request and marked consumed on verify — both INSERT and UPDATE. It needs no
+-- DELETE: expiry is a timestamp check and consumption sets consumedAt, deliberately so
+-- this role's no-DELETE rule holds. New tables inherit SELECT automatically via the
+-- ALTER DEFAULT PRIVILEGES above, but INSERT/UPDATE is enumerated, so re-run this script
+-- in every environment after the migration lands or the public backend will 500 on
+-- /auth/register and /auth/otp/request.
+GRANT INSERT, UPDATE ON "User", "Registration", "SpeedDatingRegistration", "Feedback", "Certificate", "SiteSettings", "OtpChallenge"
   TO bliblitalk_public;

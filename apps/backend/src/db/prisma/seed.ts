@@ -14,6 +14,9 @@ async function main() {
   await prisma.announcement.deleteMany();
   await prisma.event.deleteMany();
   await prisma.speaker.deleteMany();
+  // OtpChallenge cascades on User delete, so this is belt-and-braces — but it keeps the
+  // purge order explicit rather than relying on the FK, matching the rest of this block.
+  await prisma.otpChallenge.deleteMany();
   await prisma.user.deleteMany();
 
   // ---- Categories ----

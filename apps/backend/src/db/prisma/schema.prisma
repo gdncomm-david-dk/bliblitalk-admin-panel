@@ -68,7 +68,10 @@ model User {
   // Self-registration profile fields (Talent Engagement participants).
   institution       String?
   yearsOfExperience String?
-  passwordHash      String
+  // Nullable since the 2026-08 email-OTP change: participants registering through
+  // bliblitalk-user-fe never set a password at all. Admin-provisioned staff accounts
+  // (adminUsers.service.ts) always set it, and password login only ever applies to them.
+  passwordHash      String?
   // SEC-007: bumped on logout and on role/employment-type change; requireAuth rejects any
   // token whose embedded tokenVersion no longer matches this column, so a leaked or
   // still-cached token stops working immediately instead of staying valid for its full life.
@@ -76,11 +79,35 @@ model User {
   registrations Registration[]
   certificates  Certificate[]
   feedbacks     Feedback[]
+  otpChallenges OtpChallenge[]
   // Events this user administers (EVENT_ADMIN scope). Empty for other roles.
   adminEvents   Event[]        @relation("EventAdmins")
   // Events this user owns (created / is accountable for).
   ownedEvents   Event[]        @relation("EventOwner")
   createdAt     DateTime       @default(now())
+}
+
+/// Email one-time-code login for participants (bliblitalk-user-fe, 2026-08).
+/// Deliberately its own table rather than columns on User: it gives a real
+/// per-request audit trail, and it stops concurrent requests from multiple tabs
+/// or devices clobbering one shared row. Only the bcrypt hash of the code is
+/// ever stored; the plaintext exists just long enough to be emailed.
+/// Consumption is an UPDATE (consumedAt), never a DELETE — the restricted
+/// bliblitalk_public role has no DELETE grant on any table, by design.
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  /// Wrong-code count. At 5 the challenge is locked (consumedAt set) and the
+  /// user must request a fresh code.
+  attempts   Int       @default(0)
+  /// Set on successful verify, on lockout, and when superseded by a newer request.
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, consumedAt])
 }
 
 model Speaker {

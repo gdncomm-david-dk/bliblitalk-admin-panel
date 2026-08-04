@@ -6,7 +6,10 @@ import type { AuthProvider } from "./AuthProvider";
 export class MockAuthProvider implements AuthProvider {
   async authenticate(email: string, password: string) {
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return null;
+    // passwordHash is nullable since the 2026-08 email-OTP change: participant accounts
+    // created through bliblitalk-user-fe have none. Such an account must never be
+    // loginable by password, so treat a missing hash exactly like a missing user.
+    if (!user || !user.passwordHash) return null;
     const ok = await bcrypt.compare(password, user.passwordHash);
     return ok ? user : null;
   }
