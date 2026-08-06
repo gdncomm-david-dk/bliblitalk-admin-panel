@@ -96,8 +96,14 @@ model User {
 /// bliblitalk_public role has no DELETE grant on any table, by design.
 model OtpChallenge {
   id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Null while a *registration* code is outstanding: the account does not exist
+  /// yet, on purpose. Nothing identifying the applicant is stored anywhere until
+  /// they prove the address — the profile they typed rides in a short-lived signed
+  /// token held by their browser, and the User row (whose createdAt is the audited
+  /// registration/consent timestamp) is created only when the code comes back.
+  /// Set for every sign-in code, where the account already exists.
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   codeHash   String
   expiresAt  DateTime
   /// Wrong-code count. At 5 the challenge is locked (consumedAt set) and the

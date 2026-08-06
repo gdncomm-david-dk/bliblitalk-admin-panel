@@ -26,7 +26,9 @@ export type MicrosoftAuthInput = z.infer<typeof MicrosoftAuthInput>;
 
 // Self-registration for participants. No password: since the 2026-08 change,
 // bliblitalk-user-fe authenticates participants purely by emailed one-time code, so
-// registration collects the profile and then issues the first OTP.
+// registration collects the profile and then issues the first OTP. Submitting this
+// creates nothing — the profile comes back in the registration token below and the
+// account is created only once the code is verified.
 export const RegisterInput = z.object({
   fullName: z.string().min(1, "Full name is required"),
   email: z.string().email(),
@@ -49,6 +51,23 @@ export const OtpVerifyInput = z.object({
   code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
 });
 export type OtpVerifyInput = z.infer<typeof OtpVerifyInput>;
+
+// Second half of registration. registrationToken is the signed, short-lived token
+// /auth/register handed back; it carries the profile the applicant typed, which is
+// why none of it has to be stored server-side while the code is outstanding. The
+// account is created when this succeeds — never before.
+export const RegisterVerifyInput = z.object({
+  registrationToken: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type RegisterVerifyInput = z.infer<typeof RegisterVerifyInput>;
+
+// Re-send the registration code. Returns a fresh token, since it points at a new
+// challenge — the caller must replace the one it holds.
+export const RegisterResendInput = z.object({
+  registrationToken: z.string().min(1),
+});
+export type RegisterResendInput = z.infer<typeof RegisterResendInput>;
 
 // ---- Core DTOs (API response contracts) ----
 export const UserDTO = z.object({

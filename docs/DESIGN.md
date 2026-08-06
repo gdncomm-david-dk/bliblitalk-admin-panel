@@ -62,7 +62,7 @@ partway through P8, not a P1–P5 baseline.
     ("company/school/organization"), **Role**, and **Years of experience**
     (`bliblitalk-user-fe/apps/frontend/src/pages/Register/RegisterPage.tsx:145-178`) — vocabulary aimed at
     external, not only internal, participants. `SiteSettings.contactEmail` defaults to
-    `recruitment@blibli.com` (`schema.prisma:276-279`).
+    `recruitment@blibli.com` (`schema.prisma:282-285`).
   - **Conclusion, confirmed by the owner:** BlibliTalk is best described as Blibli's talk-series /
     career-development event platform, **operationally owned by the Talent Acquisition function**,
     serving a **mixed audience of internal Blibli employees and external participants by design** — the
@@ -517,7 +517,7 @@ erDiagram
     USER ||--o{ REGISTRATION : "registers"
     USER ||--o{ CERTIFICATE : "owns"
     USER ||--o{ FEEDBACK : "submits"
-    USER ||--o{ OTPCHALLENGE : "requests login codes (ON DELETE CASCADE)"
+    USER |o--o{ OTPCHALLENGE : "requests login codes (ON DELETE CASCADE; null owner = registration code)"
     USER }o--o{ EVENT : "administers (EventAdmins)"
     USER ||--o{ EVENT : "owns (EventOwner, nullable)"
     EVENTCATEGORY ||--o{ EVENT : "categorizes"
@@ -539,7 +539,7 @@ erDiagram
     }
     OTPCHALLENGE {
         string id PK
-        string userId FK "ON DELETE CASCADE"
+        string userId FK "nullable - ON DELETE CASCADE; null while a registration code is outstanding"
         string codeHash "bcrypt - plaintext code is never stored"
         datetime expiresAt "createdAt + 15 min"
         int attempts "locks at 5"
@@ -644,23 +644,29 @@ erDiagram
 | passwordHash | String | **yes** | — | bcrypt, cost 10. Null for participant accounts created via `bliblitalk-user-fe`'s email-OTP registration (2026-08); admin-provisioned staff accounts (`adminUsers.service.ts`) always set it, and password login only ever applies to them |
 | createdAt | DateTime | no, default now() | — | doubles as the registration/consent timestamp for participant self-registration (GRC audit) |
 
-**Table: `OtpChallenge`** (`schema.prisma:97-111`)
+**Table: `OtpChallenge`** (`schema.prisma:97-117`)
 
 Email one-time-code login for participants (`bliblitalk-user-fe`, 2026-08). Its own table rather
 than columns on `User`, so each request is independently auditable and concurrent requests from
 multiple tabs/devices cannot clobber one shared row.
 
+A row with a null `userId` is a **registration** challenge: the account does not exist yet, and
+nothing identifying the applicant is stored — not even the address the code was sent to. The
+profile they typed rides in a short-lived signed token held by their browser, and the `User` row
+is created only when the code comes back, so `User.createdAt` records a completed registration
+rather than an abandoned attempt.
+
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
 | id | String (cuid) | no | PK | |
-| userId | String | no | FK → `User`, ON DELETE CASCADE | |
+| userId | String | **yes** | FK → `User`, ON DELETE CASCADE | set for sign-in codes; null for registration codes, where no account exists yet |
 | codeHash | String | no | — | bcrypt hash of the 6-digit code; the plaintext is never stored, only emailed |
 | expiresAt | DateTime | no | — | `createdAt` + 15 minutes |
 | attempts | Int | no, default 0 | — | wrong-code count; the challenge locks at 5 |
 | consumedAt | DateTime | yes | — | set on successful verify, on lockout, and when superseded by a newer request. Consumption is an UPDATE, never a DELETE — the restricted `bliblitalk_public` role has no DELETE grant anywhere, by design |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `Speaker`** (`schema.prisma:113-124`)
+**Table: `Speaker`** (`schema.prisma:119-130`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -674,7 +680,7 @@ multiple tabs/devices cannot clobber one shared row.
 | avatarUrl | String | yes | — | |
 | featured | Boolean | no, default false | — | |
 
-**Table: `EventCategory`** (`schema.prisma:126-132`, added migration `20260718060000_category_taxonomy`)
+**Table: `EventCategory`** (`schema.prisma:132-138`, added migration `20260718060000_category_taxonomy`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -683,7 +689,7 @@ multiple tabs/devices cannot clobber one shared row.
 | isActive | Boolean | no, default true | — | soft-delete flag; never physically deleted |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `Event`** (`schema.prisma:134-201`) — the largest table
+**Table: `Event`** (`schema.prisma:140-207`) — the largest table
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -738,7 +744,7 @@ Indexes: `@@index([status, registrationOpensAt])`, `@@index([status, registratio
 `@@index([status, startsAt])`, `@@index([status, endsAt])` — added specifically to serve the scheduler's
 candidate-fetch queries (migration `20260716105058_lifecycle_scheduler_indexes`).
 
-**Table: `Registration`** (`schema.prisma:203-220`)
+**Table: `Registration`** (`schema.prisma:209-226`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -755,7 +761,7 @@ candidate-fetch queries (migration `20260716105058_lifecycle_scheduler_indexes`)
 Constraint: `@@unique([userId, eventId])` — one registration per user per event (a cancelled one may be
 re-created; `REJECTED` is terminal).
 
-**Table: `SpeedDatingRegistration`** (`schema.prisma:222-228`)
+**Table: `SpeedDatingRegistration`** (`schema.prisma:228-234`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -764,7 +770,7 @@ re-created; `REJECTED` is terminal).
 | sessionInfo | String | yes | — | |
 | status | String | no, default "PENDING" | — | plain string, not a DB enum |
 
-**Table: `Announcement`** (`schema.prisma:230-236`)
+**Table: `Announcement`** (`schema.prisma:236-242`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -774,7 +780,7 @@ re-created; `REJECTED` is terminal).
 | publishedAt | DateTime | no, default now() | — | |
 | pinned | Boolean | no, default false | — | |
 
-**Table: `Certificate`** (`schema.prisma:238-246`)
+**Table: `Certificate`** (`schema.prisma:244-252`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -788,7 +794,7 @@ re-created; `REJECTED` is terminal).
 re-issuance (a participant legitimately holding more than one certificate row for the same event, each
 with its own `verificationCode`) is a real, supported scenario, not an oversight.
 
-**Table: `Feedback`** (`schema.prisma:251-273`)
+**Table: `Feedback`** (`schema.prisma:257-279`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -810,14 +816,14 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 | comments | String | yes | — | |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `SiteSettings`** (`schema.prisma:276-279`) — singleton row
+**Table: `SiteSettings`** (`schema.prisma:282-285`) — singleton row
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
 | id | String | no, default "singleton" | PK | singleton pattern by convention only, not DB-enforced |
 | contactEmail | String | no, default "recruitment@blibli.com" | — | |
 
-**Table: `ModuleSettings`** (`schema.prisma:284-288`) — generic per-module JSON config store
+**Table: `ModuleSettings`** (`schema.prisma:290-294`) — generic per-module JSON config store
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -825,7 +831,7 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 | data | Json | no | — | |
 | updatedAt | DateTime | no, @updatedAt | — | |
 
-**Table: `MarketingContact`** (`schema.prisma:292-298`)
+**Table: `MarketingContact`** (`schema.prisma:298-304`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -838,7 +844,7 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 ⚠️ No FK relation to `User`/`Registration` despite a schema comment describing this as synced from past
 registrants — confirm whether this decoupling is intentional (contacts can outlive/predate a `User` row).
 
-**Table: `EmailCampaign`** (`schema.prisma:300-310`)
+**Table: `EmailCampaign`** (`schema.prisma:306-316`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -851,7 +857,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | sentCount | Int | no, default 0 | — | |
 | failedCount | Int | no, default 0 | — | |
 
-**Table: `EmailCampaignRecipient`** (`schema.prisma:312-320`)
+**Table: `EmailCampaignRecipient`** (`schema.prisma:318-326`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -862,7 +868,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | status | String | no, default "PENDING" | — | `PENDING\|SENT\|FAILED`, plain string |
 | error | String | yes | — | |
 
-**Table: `EventReminder`** (`schema.prisma:329-345`)
+**Table: `EventReminder`** (`schema.prisma:335-351`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -881,7 +887,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | failedCount | Int | no, default 0 | — | |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `EventStatusHistory`** (`schema.prisma:347-360`) — the lifecycle audit trail, added migration
+**Table: `EventStatusHistory`** (`schema.prisma:353-366`) — the lifecycle audit trail, added migration
 `20260716060555_lifecycle_engine`
 
 | Field | Type | Nullable | Key | Description |
