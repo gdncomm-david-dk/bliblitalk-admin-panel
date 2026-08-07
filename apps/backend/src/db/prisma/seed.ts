@@ -346,7 +346,7 @@ async function main() {
   });
 
   // Attended (past) events registered by the demo user
-  const breakingStartsAt = t("2026-08-20T18:30:00");
+  const breakingStartsAt = t("2026-07-30T18:30:00");
   const breaking = await prisma.event.create({
     data: {
       slug: "breaking-fast-breaking-ideas",
@@ -357,7 +357,7 @@ async function main() {
       tags: ["Design", "Leadership"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: breakingStartsAt,
-      endsAt: t("2026-08-20T20:30:00"),
+      endsAt: t("2026-07-30T20:30:00"),
       capacity: 120,
       status: "COMPLETED",
       ...defaultMeta(breakingStartsAt),
