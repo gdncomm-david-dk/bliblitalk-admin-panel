@@ -53,9 +53,12 @@ Semua variabel dideklarasikan di `.env.example`. Jangan pernah commit `.env`.
 | `NODE_ENV` | Yes | `development` atau `production` |
 | `PORT` | No | Server port (default: 3000) |
 | `DATABASE_URL` | Yes | Connection string PostgreSQL 15 |
-| `PUBLIC_FE_ORIGIN` | Yes | Origin user FE untuk allow-list CORS `/api/public/*` |
 | `ADMIN_FE_ORIGIN` | Yes | Origin admin FE untuk allow-list CORS `/api/admin/*` |
-| `JWT_SECRET` | Yes | Secret untuk verifikasi sesi admin (via GKE Secret) |
+
+> Sejak migrasi Apps Gateway (2026-08-06) aplikasi ini tidak lagi menerbitkan sesi atau
+> memverifikasi token, sehingga `JWT_SECRET` dan `COOKIE_NAME` sudah tidak dipakai di repo ini.
+> Identitas datang dari header `X-User-Id` yang di-inject gateway. `PUBLIC_FE_ORIGIN` juga sudah
+> pindah ke `bliblitalk-user-fe` sejak Phase 5.
 
 > Zone 1: bagian "External API Variables" & "External Dependencies" harus kosong. Jika terisi, eskalasi ke squad lead.
 
@@ -104,7 +107,7 @@ kubectl apply -f k8s/service.yaml
 - **Cluster:** [isi]
 - **Namespace:** [isi]
 - **Load Balancer:** Internal (admin tidak public-facing)
-- **Secret:** buat `bliblitalk-admin-secrets` berisi `DATABASE_URL`, `JWT_SECRET` via `kubectl create secret`.
+- **Secret:** buat `bliblitalk-admin-secrets` berisi `DATABASE_URL` via `kubectl create secret`.
 
 ---
 

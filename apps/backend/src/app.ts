@@ -1,12 +1,11 @@
 import express from "express";
-import cookieParser from "cookie-parser";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
 import { logger } from "./logger";
 import { config } from "./config";
 import { errorHandler } from "./middleware/error";
 import { healthRoutes } from "./routes/health";
-import { authRoutes } from "./routes/auth/auth.routes";
+import { meRoutes } from "./routes/me.routes";
 import { adminDashboardRoutes } from "./routes/admin/adminDashboard.routes";
 import { adminEventsRoutes } from "./routes/admin/adminEvents.routes";
 import { adminParticipantsRoutes } from "./routes/admin/adminParticipants.routes";
@@ -22,13 +21,12 @@ import { adminMarketingRoutes } from "./routes/admin/adminMarketing.routes";
 import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
 import { adminSpeakersRoutes } from "./routes/admin/adminSpeakers.routes";
 import { adminCategoriesRoutes } from "./routes/admin/adminCategories.routes";
-import { createAuthRateLimiter } from "./middleware/rateLimit";
+import { createAdminApiRateLimiter } from "./middleware/rateLimit";
 
-// Every request carries the session cookie in `req.headers.cookie` — redact it (and any
-// Authorization header) so pino-http's default request serializer never writes a live
-// session token into application logs. SEC-006: a login/register response's own
-// `Set-Cookie` header carries the brand-new session JWT and must be redacted too, or the
-// token leaks into logs the instant it's issued instead of only on later requests.
+// SEC-006: this app no longer issues any session of its own (Apps Gateway owns login), but
+// the gateway's own auth cookie still rides along on every request in `req.headers.cookie`,
+// so the redaction stays. `authorization` and `set-cookie` are kept for the same reason —
+// cheap, and they close the hole again the moment anything reintroduces a bearer token.
 export const LOG_REDACT_PATHS = ["req.headers.cookie", "req.headers.authorization", 'res.headers["set-cookie"]'];
 
 export function createRequestLogger(loggerInstance: typeof logger = logger) {
@@ -48,29 +46,33 @@ export function createApp() {
 
   app.use(createRequestLogger());
   app.use(express.json());
-  app.use(cookieParser());
+  // No cookie-parser: this app reads no cookies at all now. The gateway's auth cookie is
+  // its own business and is never inspected here — identity arrives as the X-User-Id header.
 
   // Repo split: this backend is internal-only and serves nothing on /api/public/* anymore
   // (bliblitalk-user-fe owns that now, with its own backend). CORS only ever needs to trust
-  // the admin CMS's own origin.
-  app.use(
-    "/api/auth",
-    cors({ origin: config.adminFeOrigin, credentials: true }),
-  );
-  app.use(
-    "/api/admin",
-    cors({ origin: config.adminFeOrigin, credentials: true }),
-  );
+  // the admin CMS's own origin. This matters for local dev, where the SPA (5184) and this
+  // API (4001) are separate origins; in production both sit on one gateway subdomain, so
+  // requests are same-origin and none of this applies. `credentials` is gone with the
+  // cookie — the SPA sends no cookie to this API any more.
+  app.use("/api/me", cors({ origin: config.adminFeOrigin }));
+  app.use("/api/admin", cors({ origin: config.adminFeOrigin }));
 
+  // Gateway probe paths (/api/health, /api/version) — unauthenticated by gateway design,
+  // exact match, and mounted before everything else so nothing can accidentally gate them.
   app.use("/api", healthRoutes);
 
-  // Uploaded images (served statically; written by POST /api/admin/uploads). Not gated by
-  // either CORS block above — referenced as <img src> by the portal too (until Phase 6
-  // moves uploads to GCS), so it stays unauthenticated static file serving.
+  // Uploaded images (served statically; written by POST /api/admin/uploads). Referenced as
+  // <img src> by the portal too, so it stays unauthenticated static file serving.
+  // KNOWN BLOCKER for the gateway rollout: behind Apps Gateway every non-probe path is
+  // login-required, so anonymous portal visitors would be redirected to the login UI and
+  // these images would break. Phase 6 (uploads -> GCS) is the fix; widening the public
+  // prefix to paper over it is not. See PROJECT.md "Login Method".
   app.use("/api/uploads", express.static(UPLOADS_DIR));
 
-  app.use("/api/auth", createAuthRateLimiter(), authRoutes);
+  app.use("/api", meRoutes);
 
+  app.use("/api/admin", createAdminApiRateLimiter());
   app.use("/api/admin", adminDashboardRoutes);
   app.use("/api/admin/events", adminEventsRoutes);
   app.use("/api/admin", adminParticipantsRoutes);

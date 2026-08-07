@@ -10,7 +10,7 @@ pre-existing code: documented with a migration note, fixed during normal work, n
 gate — but new or modified code must comply immediately regardless of tier. Statuses may be
 edited by humans; IDs, waiver notes, and FIXED entries are never deleted, only appended to.
 
-Last audited: 2026-07-24
+Last audited: 2026-07-24 — findings re-dispositioned 2026-08-06 after the Apps Gateway migration (see the dated Notes). No new audit was run on that date.
 
 ## Audit Coverage
 
@@ -37,6 +37,7 @@ Last audited: 2026-07-24
 - **Suggested fix:** Either (a) implement real Entra ID/OIDC token verification server-side before this ships to any shared environment, or (b) gate the route and the frontend button behind `!config.isProd` / a reviewed feature flag and return 404/hide the UI in production until (a) lands.
 - **Status:** FIXED (2026-07-24) — option (b): `/api/auth/microsoft` now 404s under `config.isProd` via `mockProviderGate` (`auth.routes.ts`), and the frontend Microsoft button/divider is wrapped in `{import.meta.env.DEV && (...)}` (`LoginPage.tsx`), confirmed stripped from the production bundle via `vite build`. Real Entra ID/OIDC verification remains open as GLG-001 (policy-compliance, distinct from this exploitability finding). Regression test: `auth.routes.test.ts` ("SEC-001/SEC-002: mock providers are blocked in production"). Commit `584b09d`.
 - **Note (2026-08-03):** Two of the cited locations above are stale: `apps/backend/src/routes/public/auth/auth.routes.ts:60-77` and `apps/backend/src/routes/public/auth/MockAuthProvider.ts:19-21` — `apps/backend/src/routes/public/` is now an empty leftover directory tree (`routes/public/auth/` contains no files) from the mono-to-split refactor. The admin-only auth router moved to `apps/backend/src/routes/auth/`: the `POST /microsoft` handler is now at `apps/backend/src/routes/auth/auth.routes.ts:56-73`, and `MockAuthProvider`'s `authenticateByEmail` is now a one-line method at `apps/backend/src/routes/auth/MockAuthProvider.ts:14`. The entry's other two cited locations (`packages/shared-types/src/schemas.ts:29-33`, `apps/frontend/src/pages/LoginPage.tsx:22,44-58`) remain accurate at those exact line numbers. The fix itself is unaffected — only the location citation was stale.
+- **Note (2026-08-06):** Closed a second time, by deletion. The Apps Gateway migration removed every location cited above: `POST /api/auth/microsoft` and its router are gone (`apps/backend/src/routes/auth/` no longer exists), `MicrosoftAuthInput` was deleted from `packages/shared-types/src/schemas.ts`, and `apps/frontend/src/pages/LoginPage.tsx` was deleted outright. There is no mock provider left to gate, in production or anywhere else. The DEV-only `/dev-login` that replaces it asserts an identity but grants nothing the database does not already allow (the backend still 403s any email without an Admin CMS role), and Vite folds it out of production builds — verified by grepping the built bundle for `dev_user` / `X-User-Id` / `Continue with Microsoft`: zero hits.
 
 ### SEC-002 — Mock Google sign-in grants any participant session with no credential  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -54,6 +55,7 @@ Last audited: 2026-07-24
 - **Why blocking:** Verified by direct read. If `ADMIN_JWT_SECRET` is ever unset or empty in a deployed environment, the server boots normally and signs/verifies every session token with a publicly-known literal string — anyone could forge a SUPER_ADMIN token. No startup check exists anywhere in `index.ts`/`app.ts`/`config.ts` that fails fast on this.
 - **Suggested fix:** At process start, validate `ADMIN_JWT_SECRET` is present, has sufficient entropy (≥32 bytes), and is not a known placeholder; `process.exit(1)` with a clear log line otherwise. Remove the fallback default entirely.
 - **Status:** FIXED (2026-07-24) — added `resolveJwtSecret()` (`config.ts`): throws at startup in production if `ADMIN_JWT_SECRET` is unset, under 32 characters, or a known placeholder; dev/test keeps the `dev-only-change-me` fallback. Regression tests: `config.test.ts` (6 cases). Commit `ba7e22c`.
+- **Note (2026-08-06):** Now moot in this repo: `resolveJwtSecret`, `config.jwtSecret` and `config.cookieName` were deleted with the Apps Gateway migration, along with `JWT_SECRET`/`COOKIE_NAME` from `.env.example`, `docker-compose.yml`, CI and the k8s docs. This app signs nothing and verifies nothing — the gateway authenticates at the edge and forwards the user email in `X-User-Id`, so there is no secret left to fall back to. The equivalent guard and its regression tests still exist in `bliblitalk-user-fe`, which does still issue participant sessions.
 
 ### SEC-004 — Hardcoded password on seeded Super Admin / Event Admin accounts  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix (hardcoded-secret)
@@ -62,6 +64,7 @@ Last audited: 2026-07-24
 - **Why blocking:** Verified by direct grep on the file. `seed.ts` has no environment gate; if ever run against a shared/staging/production database, it plants a publicly-known password on a Super Admin account with access to all employee PII.
 - **Suggested fix:** Generate a random password per seeded account at seed-time (print once to the console, never commit it), or require an explicit `SEED_ADMIN_PASSWORD` env var with no in-repo fallback. Document that this script must never target a non-ephemeral database.
 - **Status:** FIXED (2026-07-24) — `seed.ts` now sources the password via `resolveSeedPassword()` (`seedConfig.ts`), which throws if `SEED_ADMIN_PASSWORD` is unset; documented in `.env.example`. No literal password remains in source. Regression tests: `seedConfig.test.ts` (3 cases). Commit `c0cebc6`.
+- **Note (2026-08-06):** Now moot: the seed writes no password at all. `bcryptjs` hashing, `seedConfig.ts`, `seedConfig.test.ts` and the `SEED_ADMIN_PASSWORD` variable were all removed once neither app authenticated with a stored credential (participants sign in by emailed one-time code; staff sign in at Apps Gateway). `User.passwordHash` is left nullable and unwritten. Regression test: `adminUsers.routes.test.ts` ("provisioning an admin stores no credential — the gateway authenticates them") asserts the column is null after a create.
 
 ### SEC-005 — No rate limiting anywhere in the API  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -70,6 +73,7 @@ Last audited: 2026-07-24
 - **Why blocking:** Confirmed absent from `app.ts` and `package.json`. `/api/auth/login`, `/register`, `/google`, and the SEC-001/002 bypass endpoints can be hit at unlimited request rates — unrestricted brute force against bcrypt hashes and unrestricted email enumeration via `/auth/google`'s registered/unregistered oracle and `/auth/register`'s `EMAIL_TAKEN` 409.
 - **Suggested fix:** Add a per-IP + per-identifier limiter in front of `/api/auth/*` at minimum (e.g. `express-rate-limit`), mounted before the auth router, returning 429 with `RateLimit-*` headers.
 - **Status:** FIXED (2026-07-24) — added `createAuthRateLimiter()` (`middleware/rateLimit.ts`, factory so each `createApp()` gets an independent store), mounted in front of `/api/auth` in `app.ts`: 50 requests / 15 min per IP, 429 with `RateLimit-*` headers. Regression tests: `rateLimit.test.ts` (2 cases). Commit `108b670`. **Follow-up (144283f):** a re-audit found the limiter's per-IP bucketing was defeated by the documented single-reverse-proxy deployment topology (`k8s/README.md`) — `req.ip` would resolve to the proxy's own address for every client, collapsing everyone into one shared bucket. Added `app.set("trust proxy", 1)`; regression test `app.test.ts` ("SEC-005 follow-up: rate limit buckets by the real client IP...").
+- **Note (2026-08-06):** The limiter survived the Apps Gateway migration but changed both role and target. `createAuthRateLimiter()` became `createAdminApiRateLimiter()` and now guards `/api/admin` at 600 requests / 15 min per IP. The endpoints the original finding named no longer exist — there is no login, no bcrypt comparison and no email-enumeration oracle left in this app to brute-force, and the gateway refuses unauthenticated traffic before it reaches us. What remains is a blast-radius cap on an authenticated caller, which is why the ceiling is deliberately generous rather than tight. `trust proxy` and its regression test are unchanged; `app.test.ts` now drives `/api/admin/dashboard` instead of the deleted `/api/auth/me`.
 
 ### SEC-006 — Session cookie (JWT) is logged in cleartext on every request  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -87,6 +91,7 @@ Last audited: 2026-07-24
 - **Suggested fix:** Add a `jti` claim plus a revocation store, or a `tokenVersion` column on `User` bumped on logout/role-change/deactivation and checked in `requireAuth`.
 - **Status:** FIXED (2026-07-24) — added `User.tokenVersion` (migration `20260724100000_user_token_version`), embedded in the JWT and checked against the DB on every `requireAuth` call; bumped on logout (`auth.routes.ts`) and role change (`adminUsers.service.ts#updateUserRole`). Regression tests: `auth.routes.test.ts` ("logout revokes the session"), `adminUsers.routes.test.ts` ("role change revokes their already-issued session"). Commit `f522d67`.
 - **Note (2026-08-03):** The first cited location above (`apps/backend/src/routes/public/auth/auth.routes.ts:120-123`) is stale — `apps/backend/src/routes/public/auth/` is now an empty leftover directory. The logout handler moved to `apps/backend/src/routes/auth/auth.routes.ts:90-101` (same repo, same tokenVersion-increment-on-logout logic). The entry's other two locations are still valid at their paths: `apps/backend/src/routes/admin/adminUsers.service.ts` (`updateUserRole`, now ~lines 87-93) and `apps/backend/src/middleware/requireAuth.ts` (now importing `verifyToken` from `../lib/shared/auth.service`, ~lines 19-41) — neither path moved. The fix itself is unaffected — only the first location citation was stale.
+- **Note (2026-08-06):** Half of this finding left the repo. This app issues no session since the Apps Gateway migration, so there is no logout handler and no token of its own to revoke; `updateUserRole` still bumps `tokenVersion` because `bliblitalk-user-fe` sessions read it. The end-to-end assertion was split to match: `adminUsers.routes.test.ts` now asserts the trigger (a role change increments `tokenVersion`), and the enforcement half — `requireAuth` rejecting a token whose `tokenVersion` claim is stale — is tested in `bliblitalk-user-fe`, the only app where such a token can still be presented.
 
 ### SEC-008 — Unscoped PII read: any Event Admin can list every user in the system  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), must-fix
@@ -105,6 +110,7 @@ Last audited: 2026-07-24
 - **Status:** WAIVED (David Kurniawan, acting as named Information Security sign-off for this project, 2026-07-24) — owner's exact words: "its okay, because its mockup only, but in reality (production) will use real SSO gateway." **Condition of this waiver: covers the current pre-deployment/dev milestone only** (mock is prod-gated, nothing is deployed anywhere yet). This waiver does **not** extend to an actual production deployment — real Apps Gateway SSO / verified Google OAuth must ship before that happens, and this finding must be re-opened and re-verified against the code at that point. See `PROJECT.md` Review Evidence for the corresponding sign-off entry.
 - **Note (2026-08-03):** The formal Location field above (`apps/backend/src/routes/public/auth/auth.routes.ts:40-77`) is stale — that code no longer exists as one unit at one path. The mono-to-split refactor divided it across two repos: the `/microsoft` half now lives at `apps/backend/src/routes/auth/auth.routes.ts:56-73` in this repo, and the `/google` half moved out entirely to `bliblitalk-user-fe/apps/backend/src/routes/public/auth/auth.routes.ts:60-74`. The waiver itself is unaffected — only the Location field citation was stale.
 - **Note (2026-08-03):** A concrete pre-production migration plan for this finding is now drafted (`authn-implementations:setup-authn`) and recorded in `CONTEXT.md` Key Decisions — Apps Gateway SSO, admin-only (this repo's users are 100% internal staff), WHITELIST access mode, retiring `/api/auth/login`/`/api/auth/microsoft`/JWT-cookie sessions in favor of `X-User-Id`, with existing RBAC (`packages/auth/src/rbac.ts`) unchanged as the app-layer role check. Not yet implemented — still blocked on DevOps registering the subdomain + named owners at `/auth/ui/apps`. `bliblitalk-user-fe` is explicitly out of scope for Apps Gateway (see that repo's own `GLG-001`); it stays on Company Google OAuth.
+- **Note (2026-08-06):** Implemented. This app now has no login, no session and no JWT: `requireAuth` reads the gateway's `X-User-Id` header, resolves the User row by email, and answers 403 (`NO_ADMIN_ACCOUNT`) rather than 401 when that email holds no Admin CMS role — a 401 would bounce an already-authenticated browser into a redirect loop. The browser learns who it is from `GET /auth/api/me` and its app profile from `GET /api/me`; login and logout are full-page navigations to `/auth/ui/login` and `/auth/logout`. The gateway's `admin` flag is deliberately ignored: roles still come from `packages/auth/src/rbac.ts`, keyed by the User row. **This does not by itself close the finding.** Two things remain outside this repo's control and must be confirmed before go-live: DevOps registering the subdomain, named owners and `WHITELIST` access mode at `/auth/ui/apps`, and the deployment being reachable *only* through the gateway — direct ingress would let any caller assert an identity via `X-User-Id`. Until both are verified in the target environment, the waiver above still governs.
 
 ### GLG-002 — Repo origin is outside the approved company GitHub org  [FIXED (2026-08-03)]
 - **Source:** `golive-gate/adoption-checks`, non-company-storage
@@ -169,6 +175,7 @@ Last audited: 2026-07-24
 - **Why advisory:** Verified server-side: `POST /admin/users` and `PATCH /admin/users/:id/role` both correctly require `Permission.ROLE_MANAGE` (`adminUsers.routes.ts:29-56`) — there is no real privilege-escalation hole. The gap is purely client-side: routes render for any authenticated admin regardless of `Permission`, relying on the sidebar nav filter alone to hide links. A VIEWER who types a restricted URL directly sees the page shell (backend calls still correctly fail).
 - **Suggested fix:** Thread a `permission?: Permission` prop through each route and redirect to `/unauthorized` when the user lacks it, mirroring the existing nav filter.
 - **Status:** OPEN
+- **Note (2026-08-06):** still OPEN, and slightly wider than the original wording suggests. The example role named above no longer exists — `VIEWER` was removed from the `Role` enum by owner decision — so read it as any admin lacking the permission a route needs. Concretely today: `HR_TA` can reach `/events/new` and `/roles` by typing the URL even though it holds neither `EVENT_CREATE` nor `ROLE_MANAGE`. The server-side verification above is unchanged and still correct, so this remains client-side-only and advisory.
 
 ### SEC-011 — PII exposed unmasked in list views + ungated client-side CSV export  [OPEN]
 - **Source:** `code-review/audit-security` (frontend), should-fix
@@ -210,13 +217,14 @@ Last audited: 2026-07-24
 - **Suggested fix:** Sanitize/allow-list outbound HTML server-side before send (e.g. `sanitize-html` with a restrictive tag/attribute allowlist) in `mailer.ts` or at the point campaigns/reminders are composed.
 - **Status:** OPEN
 
-### SEC-016 — No idle/inactivity timeout on sessions  [OPEN]
+### SEC-016 — No idle/inactivity timeout on sessions  [FIXED (2026-08-06 — moot, this app holds no session)]
 - **Source:** `code-review/audit-security` (backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/backend/src/routes/auth/auth.routes.ts:14-20` (moved from `apps/backend/src/routes/public/auth/auth.routes.ts:13-19` — `routes/public/auth/` is now an empty leftover directory from the 2026-08 repo split; same fixed 7-day `maxAge`, still no idle timeout, so this finding remains genuinely open, just at the new path)
 - **Why advisory:** Fixed 7-day cookie/JWT life regardless of activity — a session used once and abandoned is equally valid as one used continuously.
 - **Suggested fix:** Add a sliding idle timeout (re-issue on activity with a shorter absolute window, or track last-seen server-side).
 - **Status:** OPEN
+- **Note (2026-08-06):** Moot in this repo since the Apps Gateway migration: the app holds no session, so there is no cookie lifetime for it to shorten. Session lifetime and idle policy are the gateway's now, set centrally at `/auth/ui/apps` rather than per app. The equivalent finding remains genuinely open in `bliblitalk-user-fe`, which issues its own 7-day participant sessions.
 
 ### SEC-017 — Upload MIME validation checks the client-supplied header only  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -234,13 +242,14 @@ Last audited: 2026-07-24
 - **Suggested fix:** Add an `actorId`/`createdByUserId` column to both models, populated from `req.userId` at creation time.
 - **Status:** OPEN
 
-### SEC-019 — Weak password policy for admin-provisioned staff accounts  [OPEN]
+### SEC-019 — Weak password policy for admin-provisioned staff accounts  [FIXED (2026-08-06 — moot, no passwords)]
 - **Source:** `code-review/audit-security` (backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `packages/shared-types/src/schemas.ts:37-41` (`RegisterInput`), `:732-741` (`CreateAdminUserInput`)
 - **Why advisory:** 8-character minimum, no complexity rule, for accounts (including SUPER_ADMIN-provisioned staff) that reach real PII platform-wide.
 - **Suggested fix:** Raise the admin-account minimum (12+ chars) and/or add a complexity or breached-password check, at minimum for `CreateAdminUserInput`.
 - **Status:** OPEN
+- **Note (2026-08-06):** Moot: there is no password policy to strengthen because there are no passwords. `CreateAdminUserInput.password` was deleted and `createAdminUser` no longer writes `passwordHash` — provisioning a staff member now only attaches an Admin CMS role to their email, and Apps Gateway authenticates them with their company account. `RegisterInput`'s password field had already gone with the participant email-OTP change (2026-08-04).
 
 ### SEC-020 — JWT verification has no explicit algorithm allowlist  [FIXED (2026-07-24)]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -250,6 +259,7 @@ Last audited: 2026-07-24
 - **Suggested fix:** Pass `{ algorithms: ["HS256"] }` to `jwt.verify`.
 - **Status:** FIXED (2026-07-24) — closed incidentally alongside SEC-007's `auth.service.ts` edit: `jwt.sign`/`jwt.verify` now pin `{ algorithms: ["HS256"] }`. Commit `f522d67`. Dedicated regression test added in the re-audit follow-up: `auth.service.test.ts` (signs a token with HS384, asserts `verifyToken` rejects it). Commit `144283f`.
 - **Note (2026-08-03):** The cited location above (`apps/backend/src/routes/public/auth/auth.service.ts:17-24`) is stale — `auth.service.ts` moved (per the internal shared-infra reorganization) from `apps/backend/src/routes/public/auth/` to `apps/backend/src/lib/shared/auth.service.ts`. Confirmed the `verifyToken` function with `{ algorithms: ["HS256"] }` sits at the exact same line numbers, 17-24, just under the new path. The fix itself is unaffected — only the location citation was stale.
+- **Note (2026-08-06):** The code this finding covers no longer exists here: `signToken`/`verifyToken` were deleted from `apps/backend/src/lib/shared/auth.service.ts` with the Apps Gateway migration, leaving only `toUserDTO`. Coverage moved rather than lapsed — the identical `{ algorithms: ["HS256"] }` pin and its regression test (sign with HS384, assert rejection) live in `bliblitalk-user-fe/apps/backend/src/lib/shared/auth.service.ts` and its test file, which is where tokens are still verified. Confirmed present there before this repo's copy was deleted.
 
 ### SEC-021 — Certificate verification code has low entropy (32 bits)  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -371,13 +381,14 @@ Last audited: 2026-07-24
 - **Suggested fix:** Rename opportunistically if the team wants strict schema conformance; not required.
 - **Status:** OPEN
 
-### SEC-022 — Frontend dev-only login hint hardcodes a real local credential  [OPEN]
+### SEC-022 — Frontend dev-only login hint hardcodes a real local credential  [FIXED (2026-08-06)]
 - **Source:** `code-review/audit-security` (backend + frontend re-audit, 2026-07-24), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/frontend/src/pages/LoginPage.tsx:151-155` — `Demo: superadmin@gdn-commerce.com / password123`, wrapped in `{import.meta.env.DEV && (...)}`
 - **Why advisory:** Verified stripped from the production bundle (`vite build`, matching the SEC-001/002 fix's own verification) — not reachable outside local dev. It is still a literal credential string in source, and it is only accurate because this repo's gitignored `apps/backend/.env` happens to still set `SEED_ADMIN_PASSWORD=password123` (the committed `.env.example` documents a different placeholder, `changeme-for-local-dev`) — so the hint is real today but will silently go stale for anyone who rotates their local `SEED_ADMIN_PASSWORD`.
 - **Suggested fix:** Either remove the literal and point to `.env.example`'s documented variable name instead of a value, or accept as-is (dev-only UX convenience) with a comment noting it must track whatever `SEED_ADMIN_PASSWORD` is locally set to.
 - **Status:** OPEN
+- **Note (2026-08-06):** Resolved by deletion rather than by editing the hint. `apps/frontend/src/pages/LoginPage.tsx` no longer exists — the whole password login surface went with the Apps Gateway migration. Its replacement, `DevLoginPage.tsx`, lists seeded admin *emails* only and verifies nothing, because there is no credential to hint at; `SEED_ADMIN_PASSWORD` itself has also been removed (see SEC-004). Verified absent from the production bundle.
 
 ### SEC-023 — Rate limiter's in-memory store won't scale across multiple replicas  [OPEN]
 - **Source:** `code-review/audit-security` (backend re-audit, 2026-07-24), should-fix

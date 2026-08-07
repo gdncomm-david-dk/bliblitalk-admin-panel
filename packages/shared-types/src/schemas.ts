@@ -10,19 +10,11 @@ import {
 } from "./enums";
 
 // ---- Auth ----
-export const LoginInput = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-export type LoginInput = z.infer<typeof LoginInput>;
-
-// Mock Microsoft Entra ID (Azure AD) sign-in — Admin CMS SSO. A real integration
-// verifies the token and reads these same claims.
-export const MicrosoftAuthInput = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-});
-export type MicrosoftAuthInput = z.infer<typeof MicrosoftAuthInput>;
+// Neither app has a login endpoint any more, so there is no login input to describe:
+// bliblitalk-admin sits behind Apps Gateway and reads the X-User-Id header (2026-08-06),
+// and bliblitalk-user-fe authenticates participants by emailed one-time code (2026-08-04).
+// LoginInput (email + password) and MicrosoftAuthInput (the mocked Entra ID sign-in) were
+// deleted with the handlers that consumed them.
 
 // Self-registration for participants. No password: since the 2026-08 change,
 // bliblitalk-user-fe authenticates participants purely by emailed one-time code, so
@@ -749,13 +741,17 @@ export const UpdateUserEmploymentTypeInput = z.object({
 });
 export type UpdateUserEmploymentTypeInput = z.infer<typeof UpdateUserEmploymentTypeInput>;
 
-// Provisions a new Admin CMS staff account directly (no self-registration path for
-// staff — see auth.routes.ts /microsoft). Caller must hold Permission.ROLE_MANAGE;
-// the service additionally restricts `role` to ADMIN_ROLES (no provisioning PARTICIPANT).
+// Grants an Admin CMS role to a staff member (no self-registration path for staff).
+// Caller must hold Permission.ROLE_MANAGE; the service additionally restricts `role` to
+// ADMIN_ROLES (no provisioning PARTICIPANT).
+//
+// No password since the 2026-08-06 Apps Gateway migration: the person signs in through the
+// gateway with their company account, and this row exists only to attach an app-level role
+// to their email. Whether they may reach the app at all is the gateway's WHITELIST, which
+// is managed at /auth/ui/apps and not by this endpoint.
 export const CreateAdminUserInput = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
   // Can't reference @repo/auth's ADMIN_ROLES here (auth depends on shared-types, so
   // that import would be circular) — excluding PARTICIPANT is the schema-level
   // equivalent, so a future refactor can't accidentally drop the guard entirely by

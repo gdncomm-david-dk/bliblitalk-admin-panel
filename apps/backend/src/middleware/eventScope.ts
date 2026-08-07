@@ -7,7 +7,7 @@ import { AppError } from "./error";
 /**
  * Whether a user may act on a specific event.
  *
- * Non-event-scoped roles (SUPER_ADMIN, HR_TA, VIEWER) pass this check — their access
+ * Non-event-scoped roles (SUPER_ADMIN, HR_TA) pass this check — their access
  * is gated upstream by `requireRole` and the RBAC permission matrix. EVENT_ADMIN is
  * additionally restricted to events it is assigned to (`Event.admins`).
  */

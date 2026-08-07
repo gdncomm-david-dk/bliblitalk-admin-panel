@@ -14,11 +14,12 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 
 | Metric | Count |
 |---|---|
-| Total | 24 |
-| Passed | 21 |
+| Total | 27 |
+| Passed | 16 |
 | Failed | 0 |
 | Pending | 3 |
-| Stale | 0 |
+| Stale | 4 |
+| No longer applicable (kept for history) | 4 |
 
 ## Scenarios
 
@@ -123,6 +124,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: both return 404 under production; both still work in dev/test
 - Covers: `apps/backend/src/routes/public/auth/auth.routes.ts:27-32,53,73`, `apps/backend/src/routes/public/auth/auth.routes.test.ts` ("SEC-001/SEC-002: mock providers are blocked in production")
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): no longer applies — kept for history. The Apps Gateway migration deleted both mock providers and the whole auth router, so there is no production gate left to exercise. The replacement surface is covered by TS-025 and TS-026.
 
 ### TS-011 — Production boot fails fast on a missing/placeholder/short JWT secret (SEC-003)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: config — JWT secret validation
@@ -133,6 +135,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: throws in all three cases; accepts a valid ≥32-char non-placeholder secret; dev/test keeps the fallback
 - Covers: `apps/backend/src/config.ts:11-23`, `apps/backend/src/config.test.ts`
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): no longer applies — kept for history. `resolveJwtSecret`, `config.jwtSecret` and `config.test.ts` were deleted with the Apps Gateway migration; this app signs and verifies nothing. The same startup check and its 6 cases still exist in `bliblitalk-user-fe`, which does issue participant sessions.
 
 ### TS-012 — Seed script requires SEED_ADMIN_PASSWORD, no hardcoded credential (SEC-004)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: seed — admin password provisioning
@@ -143,6 +146,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: throws when unset; returns the configured value when set; `seed.ts` contains no literal password
 - Covers: `apps/backend/src/db/prisma/seedConfig.ts`, `apps/backend/src/db/prisma/seedConfig.test.ts`
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): no longer applies — kept for history. The seed writes no password at all, and `seedConfig.ts` / `seedConfig.test.ts` / `SEED_ADMIN_PASSWORD` were removed. The stronger property now holds and is tested instead: `adminUsers.routes.test.ts` asserts a provisioned admin's `passwordHash` is null.
 
 ### TS-013 — Auth endpoints are rate-limited, and proxied requests bucket by real client IP (SEC-005 + follow-up)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: rate limiting — /api/auth/*
@@ -153,6 +157,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: 50/15min per real client IP, not per proxy hop or shared globally
 - Covers: `apps/backend/src/middleware/rateLimit.ts`, `apps/backend/src/app.ts` (trust proxy), `apps/backend/src/middleware/rateLimit.test.ts`, `apps/backend/src/app.test.ts` ("SEC-005 follow-up")
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): STALE — the covered code changed. `createAuthRateLimiter()` became `createAdminApiRateLimiter()` (600 req / 15 min) and now guards `/api/admin` rather than the deleted `/api/auth/*`; `app.test.ts` drives `/api/admin/dashboard`. The trust-proxy property under test is unchanged and both tests pass, but the scenario text above still describes the old endpoint and ceiling and needs rewriting at the next audit.
 
 ### TS-014 — Session cookie never appears in logs, request or response side (SEC-006)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: logging — session cookie redaction
@@ -163,6 +168,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: neither the request `Cookie` header nor the response `Set-Cookie` header's live value appears in captured log output; both show `[Redacted]`
 - Covers: `apps/backend/src/app.ts:33-40` (`LOG_REDACT_PATHS`), `apps/backend/src/app.test.ts` (both redaction tests)
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): STALE — still passing, but the rationale shifted. This app sets no cookie of its own any more; what the redaction now protects is Apps Gateway's SSO cookie, which is sent on every same-origin request. The assertions are unchanged and green.
 
 ### TS-015 — Session is revoked immediately on logout and on role change (SEC-007)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: auth — tokenVersion-based session revocation
@@ -173,6 +179,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: both replays return 401 "Session has been revoked" — the cookie is dead the instant tokenVersion is bumped, not after its full 7-day life
 - Covers: `apps/backend/src/middleware/requireAuth.ts:26-41`, `apps/backend/src/routes/public/auth/auth.routes.ts:132-147`, `apps/backend/src/routes/admin/adminUsers.service.ts:87-93`, `apps/backend/src/routes/public/auth/auth.routes.test.ts` ("logout revokes the session"), `apps/backend/src/routes/admin/adminUsers.routes.test.ts` ("SEC-007: changing a user's role revokes...")
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): STALE — the scenario now spans two repos. This app issues no session, so there is no logout to revoke and no cookie to replay; `adminUsers.routes.test.ts` asserts only the trigger (role change increments `tokenVersion`). The enforcement half — `requireAuth` rejecting a stale `tokenVersion` claim — is exercised in `bliblitalk-user-fe`. Needs re-scoping to the two halves at the next audit.
 
 ### TS-016 — Event Admin's user list is scoped to their own events, never platform-wide (SEC-008)  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: admin users — PII scoping
@@ -193,6 +200,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: rejected (returns null), even though the secret is correct
 - Covers: `apps/backend/src/routes/public/auth/auth.service.ts:13,19`, `apps/backend/src/routes/public/auth/auth.service.test.ts`
 - Last-verified-commit: 32ba496
+- Note (2026-08-06): no longer applies here — kept for history. `signToken`/`verifyToken` were deleted from this repo with the Apps Gateway migration. The identical allowlist and its HS384-rejection test moved to `bliblitalk-user-fe/apps/backend/src/lib/shared/auth.service.ts`; confirmed present there before this copy was removed.
 
 ### TS-018 — EVENT_ADMIN access is scoped to assigned events; other admin roles are not  [PASSED (2026-07-24, 32ba496, agent)]
 - Feature / flow: DESIGN.md §B "Admin manages participants and attendance" (role-based access difference)
@@ -223,6 +231,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Expected: an explicit owner decision recorded here or in DESIGN.md, resolving the ⚠️
 - Covers: `packages/auth/src/rbac.ts:82-84`
 - Last-verified-commit: —
+- Note (2026-08-06): half of this question is now closed. The owner retired the VIEWER role entirely (see TS-027), so only the HR_TA half is still open: is Talent Acquisition meant to see every event platform-wide? Still PENDING and still `verify: human` — the owner has not answered that part, and the code continues to treat HR_TA as unscoped.
 
 ### TS-021 — Mock SSO/OAuth is acceptable for this go-live, or real Entra ID/Google OAuth must ship first (GLG-001)  [PASSED (2026-07-24, 8017db0, reviewer)]
 - Feature / flow: login-method policy compliance
@@ -234,6 +243,7 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Covers: `docs/REMEDIATION.md` GLG-001
 - Last-verified-commit: 8017db0
 - Note: David Kurniawan, acting as the project's named Information Security sign-off, waived this **for the current pre-deployment/dev milestone only** — real SSO/OAuth is still required before an actual production deployment, at which point this finding re-opens. This is the owner's own sign-off, not the separate independent (non-builder) review required by Task 6 for the overall High-risk go-live gate.
+- Note (2026-08-06): STALE — the decision this scenario records has been overtaken by implementation. Apps Gateway SSO is now the login method in code (see GLG-001's 2026-08-06 note): no login endpoint, no session, identity from `X-User-Id`. The waiver was scoped to the pre-deployment milestone, so a reviewer must now re-verify the *deployed* preconditions instead — subdomain and WHITELIST registered by DevOps at `/auth/ui/apps`, and the app reachable only through the gateway.
 
 ### TS-022 — Repo hosting location outside the approved GitHub org (GLG-002)  [PASSED (2026-07-24, 8017db0, reviewer)]
 - Feature / flow: repo-homing policy compliance
@@ -268,6 +278,37 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - Last-verified-commit: —
 - Note: **no automated test exists for this branch** — confirmed by reading `events.routes.test.ts` in full; only the waitlist-enabled full-capacity case ("auto-waitlists once capacity is full") is covered. Cannot be marked PASSED by inspection alone; needs a new regression test or a human-verified manual run.
 
+### TS-025 — Admin API identity comes from the gateway's X-User-Id, and a non-admin email is refused  [PASSED (2026-08-06, agent)]
+- Feature / flow: auth — Apps Gateway identity + app-level role check
+- Category: sensitive
+- Verify: agent
+- Preconditions: a seeded admin email, a seeded participant email, and no gateway running (the header is supplied directly)
+- Steps: call an `/api/admin/*` route with no `X-User-Id`; with an admin email; with a participant email
+- Expected: 401 with no header; 200 for the admin email; 403 `NO_ADMIN_ACCOUNT` for the participant email — deliberately 403 and not 401, since the caller is already authenticated and a 401 would bounce the browser into a gateway redirect loop
+- Covers: `apps/backend/src/middleware/requireAuth.ts`, `apps/backend/src/routes/me.routes.ts`, `apps/backend/src/middleware/requireAuth.test.ts` (describe "requireAuth (Apps Gateway identity)", 5 cases: absent header, empty header, admin admitted, real non-admin refused, unknown email refused), every `admin*.routes.test.ts` `loginAs()` helper
+- Last-verified-commit: (uncommitted — 5 automated cases green, plus a browser walkthrough of both the admitted and refused paths)
+
+### TS-026 — The DEV-only gateway simulation is absent from the production bundle  [PASSED (2026-08-06, agent)]
+- Feature / flow: auth — local dev stand-in must never ship
+- Category: sensitive
+- Verify: agent
+- Preconditions: a production `vite build` of `apps/frontend`
+- Steps: grep the built bundle for `dev_user`, `dev-login`, `X-User-Id` and the seeded-account UI strings; then for the gateway navigation targets
+- Expected: zero hits for every dev string (Vite folds `import.meta.env.DEV` to `false`, so the route, the page component and the header injection are dropped, not merely skipped); `/auth/ui/login`, `/auth/logout` and `/auth/api/me` all present
+- Covers: `apps/frontend/src/services/gatewayAuth.ts`, `apps/frontend/src/pages/DevLoginPage.tsx`, `apps/frontend/src/app/App.tsx` (DEV-gated route), `apps/frontend/src/services/api.ts`
+- Last-verified-commit: (uncommitted — verified in-session by grepping `apps/frontend/dist/assets/index-*.js`)
+
+### TS-027 — The VIEWER role is gone from the Role enum itself, and existing VIEWER rows land on least privilege  [PASSED (2026-08-06, agent)]
+- Feature / flow: RBAC — owner-decided removal of the read-only tier
+- Category: sensitive
+- Verify: agent
+- Preconditions: a database that still carries the old five-value `Role` enum and at least one `VIEWER` row
+- Steps: apply `migrations/20260806120000_drop_viewer_role`; query `User` grouped by role and look up the previously-VIEWER account; run the backend suite; confirm the mirrors in `bliblitalk-user-fe` re-sync clean
+- Expected: the migration recreates the enum with exactly `SUPER_ADMIN, EVENT_ADMIN, HR_TA, PARTICIPANT`; the previously-VIEWER row is `PARTICIPANT`, i.e. it loses Admin CMS access rather than silently gaining another tier's rights; `ADMIN_ROLES` is the three admin values; `pnpm check:schema-drift` reports in sync
+- Covers: `apps/backend/src/db/prisma/migrations/20260806120000_drop_viewer_role/migration.sql`, `packages/shared-types/src/enums.ts`, `packages/auth/src/rbac.ts:55-60`, `packages/auth/src/rbac.test.ts` ("exposes exactly four roles"), `apps/backend/src/routes/admin/adminUsers.routes.test.ts` (ROLE_MANAGE denial)
+- Last-verified-commit: (uncommitted — migration applied and asserted in-session against the local dev database; 136/136 backend + 6/6 frontend green)
+- Note (2026-08-06): removing VIEWER cost one piece of real coverage and that is recorded rather than papered over. VIEWER was the only Admin CMS role without `USER_MANAGE`, so `GET /api/admin/users` can no longer be denied to any admin tier and the old "rejects a viewer" assertion had no valid subject left. It was rewritten against `ROLE_MANAGE` (held only by SUPER_ADMIN), which is now the narrowest permission boundary in the matrix — a narrower boundary than before, not a weaker one. Five other denial tests simply moved to `hrta@gdn-commerce.com`, which genuinely lacks the permission each of them asserts.
+
 ## History
 
 - 2026-07-24 · TS-001 through TS-024 · created (PENDING)
@@ -294,3 +335,8 @@ Last generated: 2026-07-24 · Aligned to docs/DESIGN.md
 - 2026-07-24 · TS-021 · PENDING → PASSED (reviewer, commit 8017db0) · owner/InfoSec sign-off on GLG-001 recorded (waived for pre-deployment milestone only)
 - 2026-07-24 · TS-022 · PENDING → PASSED (reviewer, commit 8017db0) · owner decision on GLG-002 recorded (migrate to gdncomm-ops; execution still pending)
 - 2026-07-24 · TS-023 · PENDING → PASSED (reviewer, commit 8017db0) · owner/InfoSec sign-off on DEP-002/DEP-003 recorded (both waived)
+- 2026-08-06 · TS-010, TS-011, TS-012, TS-017 · retained but no longer applicable — the code each covered was deleted by the Apps Gateway migration; coverage for TS-011/TS-017 moved to `bliblitalk-user-fe`
+- 2026-08-06 · TS-013, TS-014, TS-015, TS-021 · PASSED → STALE — covered code changed by the Apps Gateway migration (see each scenario's note); assertions still green, scenario text needs rewriting at the next audit
+- 2026-08-06 · TS-025, TS-026 · created and PASSED (agent) — gateway identity/role refusal, and proof the DEV-only simulation is compiled out of production builds
+- 2026-08-06 · TS-027 · created and PASSED (agent) — VIEWER removed from the `Role` Postgres enum; migration verified against the dev database, existing row landed on PARTICIPANT
+- 2026-08-06 · TS-020 · PENDING (unchanged) · annotated — the VIEWER half of the question is closed by the owner's removal decision; the HR_TA cross-event half is still open

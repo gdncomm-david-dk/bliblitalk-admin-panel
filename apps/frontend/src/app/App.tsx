@@ -2,7 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { AdminShell } from "../layouts/AdminShell";
 import { DashboardPage } from "../pages/DashboardPage";
-import { LoginPage } from "../pages/LoginPage";
+import { DevLoginPage } from "../pages/DevLoginPage";
 import { UnauthorizedPage } from "../pages/UnauthorizedPage";
 import { SiteSettingsPage } from "../pages/settings/SiteSettingsPage";
 import { EventsListPage } from "../pages/events/EventsListPage";
@@ -22,7 +22,11 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        {/* No /login route: login is a full-page navigation to the gateway's own
+            /auth/ui/login, and no SPA route may claim /auth/**. The local stand-in is mounted
+            only in DEV, where Vite folds this condition to false and drops it from the
+            production bundle. */}
+        {import.meta.env.DEV && <Route path="/dev-login" element={<DevLoginPage />} />}
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
         <Route

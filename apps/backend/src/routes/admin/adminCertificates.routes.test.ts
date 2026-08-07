@@ -37,7 +37,7 @@ describe("admin certificates", () => {
     });
     eventId = event.id;
     const user = await prisma.user.create({
-      data: { email: TEST_EMAIL, name: "Cert Test User", passwordHash: "x" },
+      data: { email: TEST_EMAIL, name: "Cert Test User" },
     });
     presentUserId = user.id;
     await prisma.registration.create({
@@ -47,10 +47,12 @@ describe("admin certificates", () => {
 
   afterAll(purge);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -59,14 +61,14 @@ describe("admin certificates", () => {
   });
 
   it("starts with no certificates issued", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/certificates`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
   it("generates a certificate for a PRESENT attendee, then is idempotent", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const first = await agent.post(`/api/admin/events/${eventId}/certificates/generate`);
     expect(first.status).toBe(200);
     expect(first.body.generated).toBe(1);
@@ -81,19 +83,19 @@ describe("admin certificates", () => {
 
   it("refuses to generate certificates when the event has them disabled", async () => {
     await prisma.event.update({ where: { id: eventId }, data: { enableCertificate: false } });
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post(`/api/admin/events/${eventId}/certificates/generate`);
     expect(res.status).toBe(400);
   });
 
-  it("rejects a viewer (no permission)", async () => {
-    const agent = await loginAs("viewer@gdn-commerce.com");
+  it("rejects Talent Acquisition (no certificate:manage permission)", async () => {
+    const agent = loginAs("hrta@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/certificates`);
     expect(res.status).toBe(403);
   });
 
   it("blocks an event admin not assigned to this event", async () => {
-    const agent = await loginAs("eventadmin@gdn-commerce.com");
+    const agent = loginAs("eventadmin@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/certificates`);
     expect(res.status).toBe(403);
   });

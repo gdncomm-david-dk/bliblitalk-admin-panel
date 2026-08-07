@@ -1,37 +1,14 @@
 import "dotenv/config";
 
-const PLACEHOLDER_JWT_SECRETS = new Set(["dev-only-change-me", "changeme", "secret", ""]);
-const MIN_PROD_JWT_SECRET_LENGTH = 32;
-
-/**
- * In production, a missing/placeholder/short secret would let anyone forge a session JWT —
- * fail fast at startup instead of silently signing tokens with a guessable value. Outside
- * production, keep the dev fallback so `pnpm dev` works with no env setup required.
- *
- * Renamed from ADMIN_JWT_SECRET (Phase 7 of the repo split): this value is no longer
- * admin-only — bliblitalk-user-fe's backend must be set to the exact same value, or every
- * session issued by one backend silently fails verification on the other.
- */
-export function resolveJwtSecret(env: NodeJS.ProcessEnv): string {
-  const secret = env.JWT_SECRET;
-  if (env.NODE_ENV === "production") {
-    if (!secret || secret.length < MIN_PROD_JWT_SECRET_LENGTH || PLACEHOLDER_JWT_SECRETS.has(secret)) {
-      throw new Error(
-        `JWT_SECRET must be set to a random value of at least ${MIN_PROD_JWT_SECRET_LENGTH} ` +
-          "characters in production.",
-      );
-    }
-    return secret;
-  }
-  return secret && secret.length > 0 ? secret : "dev-only-change-me";
-}
+// JWT_SECRET and COOKIE_NAME are gone from this app (Apps Gateway migration, 2026-08-06):
+// it signs and verifies nothing, and reads no cookie. bliblitalk-user-fe still needs both
+// for its own participant sessions — this only removes them here, not from that app or
+// from the shared database.
 
 export const config = {
   env: process.env.NODE_ENV ?? "development",
   isProd: process.env.NODE_ENV === "production",
   port: Number(process.env.PORT ?? 4000),
-  jwtSecret: resolveJwtSecret(process.env),
-  cookieName: process.env.COOKIE_NAME ?? "blibli_talk_session",
   logLevel: process.env.LOG_LEVEL ?? "info",
   adminFeOrigin: process.env.ADMIN_FE_ORIGIN ?? "http://localhost:5174",
   // The reminder/lifecycle schedulers must run in exactly one backend process — sweepDueReminders

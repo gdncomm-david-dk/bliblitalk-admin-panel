@@ -1,28 +1,14 @@
-import jwt from "jsonwebtoken";
 import type { User } from "@prisma/client";
 import type { UserDTO } from "@repo/shared-types";
-import { type SessionClaims, toSessionClaims } from "@repo/auth";
-import { config } from "../../config";
 
-export type TokenPayload = SessionClaims;
-
-export function signToken(user: Pick<User, "id" | "email" | "role" | "tokenVersion">): string {
-  return jwt.sign(
-    { sub: user.id, email: user.email, role: user.role, tokenVersion: user.tokenVersion } satisfies TokenPayload,
-    config.jwtSecret,
-    { expiresIn: "7d", algorithm: "HS256" },
-  );
-}
-
-export function verifyToken(token: string): TokenPayload | null {
-  try {
-    const decoded = jwt.verify(token, config.jwtSecret, { algorithms: ["HS256"] });
-    return toSessionClaims(decoded);
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * All this file does now is shape a User row for the wire.
+ *
+ * signToken/verifyToken were removed in the Apps Gateway migration (2026-08-06): this app
+ * issues no session and verifies no token — the gateway authenticates at the edge and hands
+ * over the user's email in X-User-Id. bliblitalk-user-fe keeps its own copy of the JWT
+ * helpers for participant sessions; that app is not behind the gateway.
+ */
 export function toUserDTO(user: User): UserDTO {
   return {
     id: user.id,

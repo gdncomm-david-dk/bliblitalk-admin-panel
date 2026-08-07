@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import request from "supertest";
-import bcrypt from "bcryptjs";
 import { createApp } from "../../app";
 import { prisma } from "../../db/client";
 
@@ -51,7 +50,6 @@ describe("admin feedback aggregate", () => {
       data: {
         email: TEST_EMAIL,
         name: "Admin Feedback Test User",
-        passwordHash: bcrypt.hashSync("password123", 10),
       },
     });
     const registration = await prisma.registration.create({
@@ -70,10 +68,12 @@ describe("admin feedback aggregate", () => {
 
   afterAll(purge);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -82,7 +82,7 @@ describe("admin feedback aggregate", () => {
   });
 
   it("returns aggregated dimension averages, NPS rate and star distribution", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/feedback`);
     expect(res.status).toBe(200);
     expect(res.body.responses).toBe(1);
@@ -119,10 +119,8 @@ describe("admin registration open/close toggle", () => {
 
   afterAll(purge);
 
-  async function loginAsSuperAdmin() {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email: "superadmin@gdn-commerce.com", password: "password123" });
-    return agent;
+  function loginAsSuperAdmin() {
+    return request.agent(app).set("X-User-Id", "superadmin@gdn-commerce.com");
   }
 
   // Under the 8-state transition table (packages/shared-types/src/lifecycle.ts),
@@ -131,7 +129,7 @@ describe("admin registration open/close toggle", () => {
   // REGISTRATION_CLOSED. The fixture event starts PUBLISHED, so registration must be
   // opened before it can be closed.
   it("opens, closes, then reopens registration", async () => {
-    const agent = await loginAsSuperAdmin();
+    const agent = loginAsSuperAdmin();
 
     const opened = await agent.post(`/api/admin/events/${eventId}/open-registration`);
     expect(opened.status).toBe(200);
@@ -148,7 +146,7 @@ describe("admin registration open/close toggle", () => {
 
   it("refuses to close registration when it isn't open for registration", async () => {
     await prisma.event.update({ where: { id: eventId }, data: { status: "DRAFT" } });
-    const agent = await loginAsSuperAdmin();
+    const agent = loginAsSuperAdmin();
     const res = await agent.post(`/api/admin/events/${eventId}/close-registration`);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("INVALID_TRANSITION");

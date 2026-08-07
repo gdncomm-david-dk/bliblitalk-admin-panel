@@ -5,16 +5,21 @@ import { createApp } from "../../app";
 describe("admin dashboard", () => {
   const app = createApp();
 
+  // Apps Gateway authenticates at the edge and forwards the signed-in user's email in
+  // X-User-Id, so there is no login request to make. supertest's agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give these tests.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
+  }
+
   it("requires auth", async () => {
     const res = await request(app).get("/api/admin/dashboard");
     expect(res.status).toBe(401);
   });
 
   it("returns the full dashboard payload for a super admin (platform-wide)", async () => {
-    const agent = request.agent(app);
-    await agent
-      .post("/api/auth/login")
-      .send({ email: "superadmin@gdn-commerce.com", password: "password123" });
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get("/api/admin/dashboard");
     expect(res.status).toBe(200);
     expect(res.body.stats).toHaveProperty("totalEvents");
@@ -25,13 +30,8 @@ describe("admin dashboard", () => {
   });
 
   it("scopes totals to assigned events for an event admin", async () => {
-    const [superAgent, eventAgent] = [request.agent(app), request.agent(app)];
-    await superAgent
-      .post("/api/auth/login")
-      .send({ email: "superadmin@gdn-commerce.com", password: "password123" });
-    await eventAgent
-      .post("/api/auth/login")
-      .send({ email: "eventadmin@gdn-commerce.com", password: "password123" });
+    const superAgent = loginAs("superadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
 
     const superRes = await superAgent.get("/api/admin/dashboard");
     const eventRes = await eventAgent.get("/api/admin/dashboard");

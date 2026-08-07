@@ -1,7 +1,5 @@
-import bcrypt from "bcryptjs";
 import dayjs from "dayjs";
 import { PrismaClient } from "@prisma/client";
-import { resolveSeedPassword } from "./seedConfig";
 
 const prisma = new PrismaClient();
 
@@ -28,7 +26,9 @@ async function main() {
   }
 
   // ---- User ----
-  const passwordHash = bcrypt.hashSync(resolveSeedPassword(process.env), 10);
+  // No seeded password: neither app authenticates with one. bliblitalk-user-fe signs
+  // participants in by emailed one-time code, and bliblitalk-admin sits behind Apps
+  // Gateway — locally, the admin frontend's DEV-only /dev-login stands in for it.
   const demo = await prisma.user.create({
     data: {
       email: "demo@gdn-commerce.com",
@@ -36,7 +36,6 @@ async function main() {
       department: "Partnership",
       position: "External Partner",
       phone: "+62 812 0000 0000",
-      passwordHash,
     },
   });
 
@@ -430,7 +429,6 @@ async function main() {
       role: "SUPER_ADMIN",
       department: "People & Culture",
       position: "Platform Administrator",
-      passwordHash,
     },
   });
   // Event Admin, scoped to two events via the EventAdmins assignment relation.
@@ -441,22 +439,11 @@ async function main() {
       role: "EVENT_ADMIN",
       department: "Talent Acquisition",
       position: "Event Organizer",
-      passwordHash,
       adminEvents: { connect: [{ id: notLost.id }, { id: learning.id }] },
     },
   });
-  // Read-only and HR-scoped roles — seeded so tests and local dev can exercise every
-  // ADMIN_ROLES tier, not just SUPER_ADMIN/EVENT_ADMIN.
-  await prisma.user.create({
-    data: {
-      email: "viewer@gdn-commerce.com",
-      name: "Viewer",
-      role: "VIEWER",
-      department: "Finance",
-      position: "Read-Only Observer",
-      passwordHash,
-    },
-  });
+  // HR-scoped role — seeded so tests and local dev can exercise every ADMIN_ROLES tier,
+  // not just SUPER_ADMIN/EVENT_ADMIN.
   await prisma.user.create({
     data: {
       email: "hrta@gdn-commerce.com",
@@ -464,7 +451,6 @@ async function main() {
       role: "HR_TA",
       department: "People & Culture",
       position: "Talent Acquisition Specialist",
-      passwordHash,
     },
   });
 
@@ -623,7 +609,7 @@ async function main() {
   void [notLost, ai];
 
   // eslint-disable-next-line no-console
-  console.log("Seed complete: 5 users (1 participant, super admin, event admin, viewer, HR/TA), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
+  console.log("Seed complete: 4 users (1 participant, super admin, event admin, HR/TA), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
 }
 
 main()

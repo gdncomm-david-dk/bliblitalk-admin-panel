@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { can, Permission } from "@repo/auth";
 import type { Role } from "@repo/shared-types";
 import { useAuthStore } from "../store/authStore";
@@ -73,16 +73,10 @@ function isActive(pathname: string, search: string, to: string): boolean {
 export function AdminShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
 
   if (!user) return null;
-
-  async function handleLogout() {
-    await logout();
-    navigate("/login", { replace: true });
-  }
 
   function toggleCollapsed() {
     setCollapsed((c) => {
@@ -158,7 +152,7 @@ export function AdminShell() {
           ))}
         </nav>
         <div className="border-t border-line p-3">
-          <UserMenu user={user} onLogout={handleLogout} variant="sidebar" collapsed={collapsed} />
+          <UserMenu user={user} onLogout={logout} variant="sidebar" collapsed={collapsed} />
         </div>
       </aside>
 
@@ -184,7 +178,7 @@ export function AdminShell() {
             >
               <BellIcon width={18} height={18} />
             </button>
-            <UserMenu user={user} onLogout={handleLogout} />
+            <UserMenu user={user} onLogout={logout} />
           </div>
         </header>
         <main className="flex-1 p-6">

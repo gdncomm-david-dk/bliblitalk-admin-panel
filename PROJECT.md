@@ -48,7 +48,7 @@ A tool is not automatically Low just because it is small. When in doubt, consult
 Matched criterion: *accessible outside the company or internet-facing* (owner-confirmed).
 
 Answer verification (per `data/risk-criteria.json`'s interview):
-- **users** — team + external participants. CONFIRMED: RBAC roles `SUPER_ADMIN`/`EVENT_ADMIN`/`HR_TA`/`VIEWER`/`PARTICIPANT` (`packages/shared-types/src/enums.ts`), shared deployment config (`k8s/README.md`, `docker-compose.yml`).
+- **users** — team + external participants. CONFIRMED: RBAC roles `SUPER_ADMIN`/`EVENT_ADMIN`/`HR_TA`/`PARTICIPANT` (`packages/shared-types/src/enums.ts`; `VIEWER` was retired 2026-08-06), shared deployment config (`k8s/README.md`, `docker-compose.yml`).
 - **systems** — connects to company systems. CONFIRMED: Postgres via Prisma, SMTP mailer for marketing/reminder emails (`apps/backend/src/config.ts` `smtp` block).
 - **data** — internal + participant personal data (name, email, phone, institution, department, position, years of experience). CONFIRMED via `schema.prisma` `User` model. No KTP/payroll/financial fields found — per the playbook's `personalDataRule`, this alone would not reach High, but combines with the exposure criterion below.
 - **automation** — automates regular work. CONFIRMED: `sweepEventLifecycle` and `sweepDueReminders` (60s interval sweeps, `apps/backend/src/index.ts`), marketing email campaigns (`adminMarketing.service.ts`).
@@ -72,7 +72,46 @@ KTP/NIK, payroll or salary data, financial account data, health data, passwords 
 
 ## Login Method
 
-Admin CMS (this repo): Microsoft SSO (Apps Gateway-equivalent) — currently a **mock** implementation gated behind `!config.isProd` (see `docs/REMEDIATION.md` SEC-001/GLG-001; real Entra ID/OIDC verification is not yet implemented). Participant-facing login (consumed by `bliblitalk-user-fe` via this repo's public API): Google OAuth — also currently a **mock** implementation gated the same way (SEC-002). Neither is a real, verified SSO/OAuth integration yet — this is the GLG-001 blocking finding in `docs/REMEDIATION.md`.
+**Apps Gateway SSO.** This app implements no login, no sessions and no JWTs: the gateway
+authenticates at the edge and forwards the signed-in user's email in the `X-User-Id` header. The
+app reads that header, looks the address up in `User`, and applies its own role matrix
+(`@repo/auth`). Adopted 2026-08-06, replacing the mocked Microsoft SSO and the password login
+(`docs/REMEDIATION.md` SEC-001 / GLG-001).
+
+Apps Gateway is the correct method here because this app's entire population — `SUPER_ADMIN`,
+`EVENT_ADMIN`, `HR_TA` — is internal staff with company accounts. It is **not** a fit for
+`bliblitalk-user-fe`, whose population is external participants with no company account; that app
+is tracked separately under its own `GLG-003`.
+
+### Gateway registration — values for DevOps to apply (not performed by this project)
+
+Registration decides who may enter the app and is authenticated with a credential this project
+never holds. It is done by DevOps at `/auth/ui/apps`, or automatically by the AIVA platform at
+onboarding. Nobody here calls `POST /auth/api/apps/register`.
+
+| Field | Value |
+|---|---|
+| Subdomain | ⚠️ **owner input** — pattern `<service>.<public-domain>`; `bliblitalk-admin.blibli.io` (prod) / `bliblitalk-admin-staging.blibli.dev` (staging) fits the convention |
+| Owners | ⚠️ **owner input** — blocked on `## Project Owner` / `## Support Contact`, both still unset below |
+| Access mode | `WHITELIST` (gateway default: owners + access list). Correct for an internal CMS — `EVERYONE` would admit any signed-in company user and leave the app's own RBAC as the only gate |
+| Applied by | DevOps at `/auth/ui/apps`, or AIVA at onboarding |
+
+**Owners is not a formality.** For AIVA-onboarded apps the `support-contact` becomes the registered
+owner *and* a staging Keycloak login identity. A shared or group mailbox there is a shared
+credential with no accountable person — name an individual.
+
+### Deployment prerequisites, not automatable
+
+1. **The app needs its own hostname.** `k8s/README.md` documents one path-routed Ingress (`/` →
+   participant portal, `/admin` → this app). Gateway registration is subdomain-based, so this app
+   must move to its own host before routing works.
+2. **The app must be reachable only through the gateway** in production — no ingress of its own.
+   `X-User-Id` is trusted by network isolation, nothing else.
+3. **`/api/uploads/**` must be resolved first.** It is unauthenticated static file serving that the
+   participant portal references as `<img src>`. Behind the gateway every non-probe path is
+   login-required, so those images would redirect anonymous visitors to the login UI and break.
+   The fix is Phase 6 (move uploads to GCS), already planned; do not work around it by widening the
+   public prefix.
 
 ## Access Levels
 

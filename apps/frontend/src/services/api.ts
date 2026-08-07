@@ -1,3 +1,5 @@
+import { authHeaders } from "./gatewayAuth";
+
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export interface ApiError {
@@ -17,10 +19,15 @@ export class ApiRequestError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // credentials: "include" carries the gateway's SSO cookie; authHeaders() is the DEV-only
+  // stand-in for the X-User-Id the gateway injects in production (see gatewayAuth.ts).
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...authHeaders(),
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -40,6 +47,7 @@ async function upload<T>(path: string, file: File): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
+    headers: authHeaders(),
     body: form,
   });
   const data = await res.json().catch(() => null);

@@ -1,5 +1,4 @@
 import { Prisma } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import type { CreateAdminUserInput, EmploymentType, RegistrantDTO, RegistrantListResult, Role } from "@repo/shared-types";
 import { ADMIN_ROLES, isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
@@ -102,9 +101,14 @@ export async function updateUserEmploymentType(
 }
 
 /**
- * Provisions a new Admin CMS staff account (Super Admin, Event Admin, Talent
- * Acquisition, or Viewer) with a password the Super Admin sets here — there is no
- * self-registration path for staff. Callers must already hold Permission.ROLE_MANAGE.
+ * Grants an Admin CMS role (Super Admin, Event Admin, or Talent Acquisition) to a staff
+ * member — there is no self-registration path for staff. Callers must already hold
+ * Permission.ROLE_MANAGE.
+ *
+ * No credential is created: since the Apps Gateway migration the person authenticates with
+ * their company account at the gateway, and this row only attaches an app-level role to
+ * their email. Being listed here does not by itself let anyone in — the gateway's WHITELIST
+ * decides that, and it is managed at /auth/ui/apps by DevOps, not from this app.
  */
 export async function createAdminUser(
   input: CreateAdminUserInput,
@@ -119,13 +123,13 @@ export async function createAdminUser(
   if (existing) {
     throw new AppError("EMAIL_TAKEN", "An account with this email already exists", 409);
   }
-  const passwordHash = await bcrypt.hash(input.password, 10);
   try {
     const user = await prisma.user.create({
       data: {
         name: input.name,
         email,
-        passwordHash,
+        // passwordHash is deliberately left null: nothing in this repo authenticates with
+        // it any more, so writing one would be storing a credential nobody can use.
         role: input.role,
         employmentType: "INTERNAL",
       },

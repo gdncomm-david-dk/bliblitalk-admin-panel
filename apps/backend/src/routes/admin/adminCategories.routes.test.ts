@@ -16,10 +16,12 @@ describe("admin categories CRUD", () => {
   beforeEach(purgeSyntheticCategories);
   afterAll(purgeSyntheticCategories);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -27,14 +29,14 @@ describe("admin categories CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a viewer (no permission)", async () => {
-    const agent = await loginAs("viewer@gdn-commerce.com");
+  it("rejects Talent Acquisition (no event:update permission)", async () => {
+    const agent = loginAs("hrta@gdn-commerce.com");
     const res = await agent.get("/api/admin/categories");
     expect(res.status).toBe(403);
   });
 
   it("creates a category and lists it with eventCount 0", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}Robotics` });
     expect(created.status).toBe(201);
     expect(created.body.name).toBe(`${TEST_PREFIX}Robotics`);
@@ -47,13 +49,13 @@ describe("admin categories CRUD", () => {
   });
 
   it("rejects a nameless category with 422", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post("/api/admin/categories").send({});
     expect(res.status).toBe(422);
   });
 
   it("rejects a duplicate name (case-insensitive) with 409", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}Duplicate` });
     const res = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}duplicate` });
     expect(res.status).toBe(409);
@@ -61,7 +63,7 @@ describe("admin categories CRUD", () => {
   });
 
   it("updates a category via PATCH, rejecting a rename to a duplicate", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const a = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}A` });
     const b = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}B` });
 
@@ -79,13 +81,13 @@ describe("admin categories CRUD", () => {
   });
 
   it("404s on updating a missing category", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.patch("/api/admin/categories/nonexistent-id").send({ name: "X" });
     expect(res.status).toBe(404);
   });
 
   it("hard-blocks deletion when an upcoming event still uses the category", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const category = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}InUse` });
     const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const event = await agent.post("/api/admin/events").send({
@@ -108,7 +110,7 @@ describe("admin categories CRUD", () => {
   });
 
   it("soft-deletes (deactivates) a category with no upcoming events", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const category = await agent.post("/api/admin/categories").send({ name: `${TEST_PREFIX}Unused` });
     const res = await agent.delete(`/api/admin/categories/${category.body.id}`);
     expect(res.status).toBe(204);
@@ -119,7 +121,7 @@ describe("admin categories CRUD", () => {
   });
 
   it("excludes inactive categories from the default list, includes them with includeInactive=true", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const category = await agent
       .post("/api/admin/categories")
       .send({ name: `${TEST_PREFIX}ToggleVisibility` });

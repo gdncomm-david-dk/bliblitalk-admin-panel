@@ -37,7 +37,6 @@ describe("admin participants", () => {
       data: {
         email: "admin-participants-test@example.com",
         name: "Participant Test",
-        passwordHash: "x",
       },
     });
     userId = user.id;
@@ -48,10 +47,12 @@ describe("admin participants", () => {
 
   afterAll(purge);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   async function getRegistrationId(): Promise<string> {
@@ -65,7 +66,7 @@ describe("admin participants", () => {
   });
 
   it("lists registrations for an event with user info", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/registrations`);
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(1);
@@ -74,7 +75,7 @@ describe("admin participants", () => {
   });
 
   it("shortlists a registration", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     const res = await agent.post(`/api/admin/registrations/${regId}/shortlist`);
     expect(res.status).toBe(200);
@@ -83,7 +84,7 @@ describe("admin participants", () => {
   });
 
   it("rejects a registration", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     const res = await agent.post(`/api/admin/registrations/${regId}/reject`);
     expect(res.status).toBe(200);
@@ -91,7 +92,7 @@ describe("admin participants", () => {
   });
 
   it("refuses to shortlist an already-rejected registration", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     await agent.post(`/api/admin/registrations/${regId}/reject`);
     const res = await agent.post(`/api/admin/registrations/${regId}/shortlist`);
@@ -99,7 +100,7 @@ describe("admin participants", () => {
   });
 
   it("reverts a shortlisted registration back to waiting", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     await agent.post(`/api/admin/registrations/${regId}/shortlist`);
     const res = await agent.post(`/api/admin/registrations/${regId}/waitlist`);
@@ -109,7 +110,7 @@ describe("admin participants", () => {
   });
 
   it("checks in a registration, recording attendance and a check-in time", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     const res = await agent.post(`/api/admin/registrations/${regId}/check-in`);
     expect(res.status).toBe(200);
@@ -117,7 +118,7 @@ describe("admin participants", () => {
   });
 
   it("marks a registration absent", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     const res = await agent.post(`/api/admin/registrations/${regId}/mark-absent`);
     expect(res.status).toBe(200);
@@ -125,7 +126,7 @@ describe("admin participants", () => {
   });
 
   it("refuses to record attendance for a rejected registration", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const regId = await getRegistrationId();
     await agent.post(`/api/admin/registrations/${regId}/reject`);
     const res = await agent.post(`/api/admin/registrations/${regId}/check-in`);
@@ -133,7 +134,7 @@ describe("admin participants", () => {
   });
 
   it("blocks an event admin not assigned to this event", async () => {
-    const agent = await loginAs("eventadmin@gdn-commerce.com");
+    const agent = loginAs("eventadmin@gdn-commerce.com");
     const list = await agent.get(`/api/admin/events/${eventId}/registrations`);
     expect(list.status).toBe(403);
 

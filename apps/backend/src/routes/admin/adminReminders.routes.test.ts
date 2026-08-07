@@ -46,16 +46,16 @@ describe("admin reminders", () => {
 
     const [shortlisted, registered, rejected, cancelled] = await Promise.all([
       prisma.user.create({
-        data: { email: `shortlisted@${TEST_EMAIL_DOMAIN}`, name: "Shortlisted", passwordHash: "x" },
+        data: { email: `shortlisted@${TEST_EMAIL_DOMAIN}`, name: "Shortlisted" },
       }),
       prisma.user.create({
-        data: { email: `registered@${TEST_EMAIL_DOMAIN}`, name: "Registered", passwordHash: "x" },
+        data: { email: `registered@${TEST_EMAIL_DOMAIN}`, name: "Registered" },
       }),
       prisma.user.create({
-        data: { email: `rejected@${TEST_EMAIL_DOMAIN}`, name: "Rejected", passwordHash: "x" },
+        data: { email: `rejected@${TEST_EMAIL_DOMAIN}`, name: "Rejected" },
       }),
       prisma.user.create({
-        data: { email: `cancelled@${TEST_EMAIL_DOMAIN}`, name: "Cancelled", passwordHash: "x" },
+        data: { email: `cancelled@${TEST_EMAIL_DOMAIN}`, name: "Cancelled" },
       }),
     ]);
     shortlistedUserId = shortlisted.id;
@@ -79,10 +79,12 @@ describe("admin reminders", () => {
 
   afterAll(purge);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth to list reminders", async () => {
@@ -90,14 +92,14 @@ describe("admin reminders", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a viewer (no permission)", async () => {
-    const agent = await loginAs("viewer@gdn-commerce.com");
+  it("rejects Talent Acquisition (no event:update permission)", async () => {
+    const agent = loginAs("hrta@gdn-commerce.com");
     const res = await agent.get(`/api/admin/events/${eventId}/reminders`);
     expect(res.status).toBe(403);
   });
 
   it("creates a CUSTOM reminder with just subject/bodyHtml", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       sendAt: future(60),
       subject: "Don't forget!",
@@ -110,7 +112,7 @@ describe("admin reminders", () => {
   });
 
   it("rejects a reminder scheduled in the past", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       sendAt: future(-10),
       subject: "Too late",
@@ -120,7 +122,7 @@ describe("admin reminders", () => {
   });
 
   it("rejects a SHORTLIST_RESULT reminder missing the not-shortlisted message", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       kind: "SHORTLIST_RESULT",
       sendAt: future(60),
@@ -131,7 +133,7 @@ describe("admin reminders", () => {
   });
 
   it("creates a SHORTLIST_RESULT reminder with both messages", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       kind: "SHORTLIST_RESULT",
       sendAt: future(60),
@@ -146,7 +148,7 @@ describe("admin reminders", () => {
   });
 
   it("cancels a pending reminder", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       sendAt: future(60),
       subject: "Cancel me",
@@ -157,7 +159,7 @@ describe("admin reminders", () => {
   });
 
   it("refuses to cancel a reminder that already sent", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post(`/api/admin/events/${eventId}/reminders`).send({
       sendAt: future(60),
       subject: "Already sent",

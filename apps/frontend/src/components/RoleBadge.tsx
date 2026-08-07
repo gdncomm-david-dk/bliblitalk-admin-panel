@@ -4,7 +4,6 @@ const STYLES: Record<Role, string> = {
   SUPER_ADMIN: "bg-purple-50 text-status-purple",
   EVENT_ADMIN: "bg-primary-50 text-primary",
   HR_TA: "bg-amber-50 text-status-orange",
-  VIEWER: "bg-surface text-muted",
   PARTICIPANT: "bg-surface text-muted",
 };
 

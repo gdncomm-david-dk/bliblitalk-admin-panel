@@ -11,7 +11,6 @@ enum Role {
   SUPER_ADMIN
   EVENT_ADMIN
   HR_TA
-  VIEWER
   PARTICIPANT
 }
 
@@ -68,13 +67,16 @@ model User {
   // Self-registration profile fields (Talent Engagement participants).
   institution       String?
   yearsOfExperience String?
-  // Nullable since the 2026-08 email-OTP change: participants registering through
-  // bliblitalk-user-fe never set a password at all. Admin-provisioned staff accounts
-  // (adminUsers.service.ts) always set it, and password login only ever applies to them.
+  // Legacy column: nothing writes it any more and nothing authenticates with it.
+  // Participants registering through bliblitalk-user-fe have always signed in by emailed
+  // one-time code (2026-08-04), and staff accounts stopped storing a password when
+  // bliblitalk-admin moved behind Apps Gateway (2026-08-06). Kept nullable rather than
+  // dropped so the pre-existing rows are not silently rewritten by a migration.
   passwordHash      String?
-  // SEC-007: bumped on logout and on role/employment-type change; requireAuth rejects any
-  // token whose embedded tokenVersion no longer matches this column, so a leaked or
-  // still-cached token stops working immediately instead of staying valid for its full life.
+  // SEC-007: bumped on logout and on role/employment-type change; bliblitalk-user-fe's
+  // requireAuth rejects any session token whose embedded tokenVersion no longer matches this
+  // column, so a leaked or still-cached token stops working immediately instead of staying
+  // valid for its full life. bliblitalk-admin issues no token — the gateway authenticates it.
   tokenVersion  Int            @default(0)
   registrations Registration[]
   certificates  Certificate[]

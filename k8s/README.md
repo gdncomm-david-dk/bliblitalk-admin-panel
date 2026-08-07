@@ -41,11 +41,22 @@ topology is documented here alongside this repo's own, not as a separate footnot
 | `Deployment` public | `bliblitalk-user-fe`'s root `Dockerfile` | same pattern, separate repo/image — see that repo's own `k8s/README.md` |
 | `StatefulSet` postgres | `postgres:15` | or a managed Postgres (Cloud SQL) instead; shared by both Deployments |
 | `Service` + `Ingress` | one Ingress, path-routed (see topology above) | `/admin` restricted to the corporate network; `/` public |
-| `Secret` admin-secrets | `DATABASE_URL` (admin superuser role), `JWT_SECRET` | never commit real values — `kubectl create secret`. `JWT_SECRET` must be byte-for-byte identical to the public app's `Secret` |
-| `Secret` public-secrets | `DATABASE_URL` (restricted `bliblitalk_public` role — see `scripts/db/provision-public-role.sh`), `JWT_SECRET` | lives in `bliblitalk-user-fe`'s own Secret, same `JWT_SECRET` value as above |
-| `ConfigMap` admin-config | `LOG_LEVEL`, `COOKIE_NAME`, `ADMIN_FE_ORIGIN` | `COOKIE_NAME` must match the public app's ConfigMap — one host-scoped session cookie across both paths |
+| `Secret` admin-secrets | `DATABASE_URL` (admin superuser role) | never commit real values — `kubectl create secret` |
+| `Secret` public-secrets | `DATABASE_URL` (restricted `bliblitalk_public` role — see `scripts/db/provision-public-role.sh`), `JWT_SECRET` | lives in `bliblitalk-user-fe`'s own Secret; that app still issues participant sessions |
+| `ConfigMap` admin-config | `LOG_LEVEL`, `ADMIN_FE_ORIGIN` | |
 
-`PUBLIC_FE_ORIGIN` no longer applies to this repo (Phase 5 removed `/api/public/*` and its CORS
-block entirely) — it is now `bliblitalk-user-fe`'s own config, for its own frontend's CORS.
+`JWT_SECRET` and `COOKIE_NAME` no longer apply to this repo (Apps Gateway migration,
+2026-08-06): it issues no session and verifies no token. They remain
+`bliblitalk-user-fe`'s own config, and the two apps no longer need a shared value.
+
+`PUBLIC_FE_ORIGIN` likewise no longer applies here (Phase 5 removed `/api/public/*` and its
+CORS block entirely) — it is now `bliblitalk-user-fe`'s own config, for its own frontend's CORS.
+
+**Gateway routing is a hard prerequisite for this repo's Deployment.** The admin app must sit
+on its own hostname, be reachable *only* through Apps Gateway (no ingress of its own), and rely
+on the gateway to strip any client-supplied `X-User-Id` before injecting its own. Exposing the
+admin Deployment directly would let any caller assert an identity via that header. Registration
+of the subdomain and its access list is performed by DevOps at `/auth/ui/apps` — see
+`PROJECT.md`'s Login Method section for the values to apply.
 
 Add concrete YAML (or a Helm chart / Kustomize base) here when a cluster target is chosen.

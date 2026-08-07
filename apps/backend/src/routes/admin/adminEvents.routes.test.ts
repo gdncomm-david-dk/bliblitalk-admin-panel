@@ -36,10 +36,12 @@ describe("admin events CRUD", () => {
   beforeEach(purgeSyntheticEvents);
   afterAll(purgeSyntheticEvents);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -48,7 +50,7 @@ describe("admin events CRUD", () => {
   });
 
   it("creates a draft event with an auto-generated slug", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent
       .post("/api/admin/events")
       .send(validPayload({ title: `${TEST_SLUG_PREFIX}Create Flow` }));
@@ -58,13 +60,13 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an incomplete payload with 422", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post("/api/admin/events").send({ title: "Missing fields" });
     expect(res.status).toBe(422);
   });
 
   it("updates a field via PATCH", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}patch-me` }));
@@ -76,7 +78,7 @@ describe("admin events CRUD", () => {
   });
 
   it("publishes a draft; publishing an already-published event is an idempotent no-op", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}publish-me` }));
@@ -93,7 +95,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects publishing an event that can no longer legally reach PUBLISHED", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}publish-cancelled` }));
@@ -106,7 +108,7 @@ describe("admin events CRUD", () => {
   });
 
   it("cancels a published event", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}cancel-me` }));
@@ -118,7 +120,7 @@ describe("admin events CRUD", () => {
   });
 
   it("manual status override now enforces the transition table", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status` }));
@@ -141,7 +143,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an invalid status value on the manual override", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-invalid` }));
@@ -152,21 +154,21 @@ describe("admin events CRUD", () => {
     expect(res.status).toBe(422);
   });
 
-  it("rejects a viewer from the manual status override (no permission)", async () => {
-    const admin = await loginAs("superadmin@gdn-commerce.com");
+  it("rejects Talent Acquisition from the manual status override (no event:update permission)", async () => {
+    const admin = loginAs("superadmin@gdn-commerce.com");
     const created = await admin
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-forbidden` }));
 
-    const viewer = await loginAs("viewer@gdn-commerce.com");
-    const res = await viewer
+    const hrta = loginAs("hrta@gdn-commerce.com");
+    const res = await hrta
       .patch(`/api/admin/events/${created.body.id}/status`)
       .send({ status: "PUBLISHED" });
     expect(res.status).toBe(403);
   });
 
   it("deletes a draft event with no registrations", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}delete-me` }));
@@ -179,7 +181,7 @@ describe("admin events CRUD", () => {
   });
 
   it("refuses to delete a published event", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}no-delete` }));
@@ -190,7 +192,7 @@ describe("admin events CRUD", () => {
   });
 
   it("scopes an event admin's list + access to its assigned events only", async () => {
-    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
     const list = await eventAgent.get("/api/admin/events");
     expect(list.status).toBe(200);
     expect(list.body.length).toBe(2);
@@ -203,7 +205,7 @@ describe("admin events CRUD", () => {
   });
 
   it("attaches and replaces speakers via speakerIds", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const s1 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-1` });
     const s2 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-2` });
 
@@ -224,7 +226,7 @@ describe("admin events CRUD", () => {
   });
 
   it("transitions via POST /transition and writes history", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}transition-me` }));
     const res = await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go" });
     expect(res.status).toBe(200);
@@ -234,7 +236,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an illegal transition with 409 + allowed list", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}bad-transition` }));
     // PATCH /:id/status is now guarded by the same transition table (DRAFT -> COMPLETED
     // is illegal), so this test seeds the precondition directly rather than going through
@@ -248,7 +250,7 @@ describe("admin events CRUD", () => {
   });
 
   it("returns the new lifecycle fields on GET", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}dto-fields`, selectionMode: "CURATED" }));
     const res = await agent.get(`/api/admin/events/${created.body.id}`);
     expect(res.body.selectionMode).toBe("CURATED");
@@ -257,7 +259,7 @@ describe("admin events CRUD", () => {
   });
 
   it("returns the status history for an event, newest first", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}history` }));
     await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go live" });
     await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "REGISTRATION_OPEN" });
@@ -273,13 +275,13 @@ describe("admin events CRUD", () => {
   });
 
   it("404s for a nonexistent event's history", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get("/api/admin/events/does-not-exist/history");
     expect(res.status).toBe(404);
   });
 
   it("scopes history access to the event admin's assigned events", async () => {
-    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
     const notAssigned = await prisma.event.findFirstOrThrow({
       where: { slug: "love-hate-work-relationship" },
     });

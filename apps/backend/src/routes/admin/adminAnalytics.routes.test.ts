@@ -6,10 +6,12 @@ import { createApp } from "../../app";
 describe("admin analytics", () => {
   const app = createApp();
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user's email in
+  // X-User-Id, so there is no login request to make. supertest's agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -18,13 +20,13 @@ describe("admin analytics", () => {
   });
 
   it("rejects an HR admin without analytics access (no permission)", async () => {
-    const agent = await loginAs("hrta@gdn-commerce.com");
+    const agent = loginAs("hrta@gdn-commerce.com");
     const res = await agent.get("/api/admin/analytics");
     expect(res.status).toBe(403);
   });
 
   it("returns platform-wide analytics for a super admin", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get("/api/admin/analytics");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.eventsByCategory)).toBe(true);
@@ -35,8 +37,8 @@ describe("admin analytics", () => {
   });
 
   it("scopes analytics to an event admin's assigned events", async () => {
-    const superAgent = await loginAs("superadmin@gdn-commerce.com");
-    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const superAgent = loginAs("superadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
 
     const superRes = await superAgent.get("/api/admin/analytics");
     const eventRes = await eventAgent.get("/api/admin/analytics");

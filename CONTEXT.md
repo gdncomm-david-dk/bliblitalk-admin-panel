@@ -103,15 +103,25 @@ specced and planned under `docs/superpowers/`):
   each has its own `packages/*`; the schema/shared-types are synced by a script, not shared by
   reference. UI-only logic with no backend counterpart (e.g. the participant-badge matrix, or
   `bliblitalk-user-fe`'s `utils/date.ts`) stays duplicated by design, per repo.
-- **Auth splits by user population, not by route prefix.** Each backend's `/api/auth/login` now
-  explicitly rejects the other population's accounts as "not found" (401 `INVALID_CREDENTIALS`) —
-  this repo's admin login rejects `PARTICIPANT` accounts; the public backend's login rejects admin
-  accounts. Both still share the same JWT secret and the same `User.tokenVersion` column, so
-  session revocation (logout, role change) stays consistent across both backends even though they
-  never call each other.
+- **Auth splits by user population, and since 2026-08-06 by mechanism too.** The two backends no
+  longer share an authentication surface at all: this repo has no login and no session (Apps
+  Gateway authenticates staff at the edge and forwards `X-User-Id`), while `bliblitalk-user-fe`
+  signs participants in with an emailed one-time code and issues its own JWT cookie. The shared
+  `JWT_SECRET` that the split plan assumed is gone from this repo, so nothing has to be kept
+  byte-identical between them. `User.tokenVersion` is still shared: this repo bumps it on a role
+  change, and `bliblitalk-user-fe`'s `requireAuth` is what enforces the resulting revocation.
+- **The `VIEWER` role is retired (owner decision, 2026-08-06).** Read-only observers were never
+  part of the intended org model, so `VIEWER` was removed from the `Role` enum outright — not
+  merely hidden from the UI. Because `Role` is a Postgres enum and Postgres cannot drop an enum
+  value in place, `migrations/20260806120000_drop_viewer_role` recreates the type; existing
+  `VIEWER` rows are moved to `PARTICIPANT` (least privilege — they lose CMS access rather than
+  silently gaining rights) and a Super Admin re-grants a real role if needed. Consequence worth
+  knowing: `VIEWER` was the only admin tier without `USER_MANAGE`, so listing users is no longer
+  deniable to any Admin CMS role; `adminUsers.routes.test.ts` now proves the `ROLE_MANAGE`
+  boundary instead, which only `SUPER_ADMIN` holds.
 - **Every `ADMIN_ROLES` tier needs live seed coverage, not just `SUPER_ADMIN`/`EVENT_ADMIN`.**
-  `viewer@gdn-commerce.com` (`VIEWER`) and `hrta@gdn-commerce.com` (`HR_TA`) were added to
-  `seed.ts` during Phase 5 specifically so RBAC-denial tests have a real, authenticatable account
+  `hrta@gdn-commerce.com` (`HR_TA`) is in `seed.ts` specifically so RBAC-denial tests have a
+  real account
   that genuinely lacks the permission under test — `PARTICIPANT` accounts can no longer log in to
   this backend at all, so they stopped being usable as the "authenticated but unauthorized" test
   fixture. When a route's permission is held by literally every `ADMIN_ROLES` member (e.g.
@@ -134,17 +144,26 @@ specced and planned under `docs/superpowers/`):
 - **Local dev Postgres is a portable, non-persistent install** (not Docker, not a service) — it does
   not survive a reboot and needs manual restart; see the project's own memory notes for the exact
   command if a Prisma call fails with a connection error.
-- **Planned (not yet implemented): migrate this repo's login to Apps Gateway SSO, admin-only.**
+- **This repo's login is Apps Gateway SSO, admin-only** (planned 2026-08-03, implemented 2026-08-06).
   Apps Gateway fits this repo because its entire user population (`SUPER_ADMIN`/`EVENT_ADMIN`/
-  `HR_TA`/`VIEWER`) is internal staff — it does not fit `bliblitalk-user-fe` (external participants,
-  no company-account requirement), which stays on Company Google OAuth once that's wired for real.
-  The plan (drafted via `authn-implementations:setup-authn`, 2026-08-03): retire `/api/auth/login`,
-  `/api/auth/microsoft` (the mocked SSO, `GLG-001`), and JWT/cookie sessions entirely; read identity
-  from the gateway's `X-User-Id` header instead. `packages/auth/src/rbac.ts`'s existing
-  `ROLE_PERMISSIONS`/`isAdminRole` stay unchanged as the app-layer authorization, keyed by
-  `User.email`/`role` — owner confirmed access must still be role-based ("by role juga nanti
-  aksesnya"). Blocked on DevOps: subdomain + named owner emails must be registered at
-  `/auth/ui/apps` before this can be built — see `docs/REMEDIATION.md` `GLG-001`.
+  `HR_TA`) is internal staff — it does not fit `bliblitalk-user-fe` (external participants,
+  no company-account requirement), which signs participants in with an emailed one-time code
+  (2026-08-04) and carries its own OPEN governance finding for that non-approved mechanism.
+  What changed: `/api/auth/login`, `/api/auth/microsoft` (the mocked SSO, `GLG-001`) and JWT/cookie
+  sessions are gone; identity comes from the gateway's `X-User-Id` header (the user's email), and
+  the browser learns who it is from the gateway's own `GET /auth/api/me`. `packages/auth/src/rbac.ts`'s
+  `ROLE_PERMISSIONS`/`isAdminRole` are unchanged and remain the app-layer authorization, now keyed by
+  `User.email` rather than the JWT's `sub` — owner confirmed access must still be role-based ("by role
+  juga nanti aksesnya"). The gateway's own `admin` flag is deliberately **not** reused as an app role.
+  Locally there is no gateway, so `/dev-login` stores an email and a DEV-only helper sends the header;
+  both are excluded from production builds.
+  **Still blocked on DevOps** (the app cannot serve real users until these land, and none of them are
+  code): subdomain + named owner emails registered at `/auth/ui/apps`; this app moved to its own
+  hostname (today's `k8s/README.md` topology path-routes it at `/admin`, but gateway registration is
+  subdomain-based); no ingress of its own, so `X-User-Id` is trustworthy; and Phase 6 (uploads → GCS),
+  because `/api/uploads/**` is unauthenticated static serving that the portal uses as `<img src>` and
+  would otherwise start redirecting to the login UI. See `PROJECT.md` "Login Method" for the exact
+  registration values to hand over.
 
 ## Current State
 

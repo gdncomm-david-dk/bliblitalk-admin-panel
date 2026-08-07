@@ -10,6 +10,42 @@
 > since moved to `bliblitalk-user-fe`'s own backend; this repo now serves admin-only routes. Needs a
 > full regeneration via the `design-document` skill (diagrams re-derived from the current code) before
 > the pending independent review (task: admin — Independent review) relies on it.
+>
+> **⚠️ FURTHER STALE as of 2026-08-06 — the Apps Gateway migration.** This app no longer authenticates
+> anyone. Read the whole authentication story below as historical: it has been replaced, not amended.
+> Specifically, and deliberately not patched inline because the diagrams and prose would still disagree
+> with each other:
+>
+> - There is **no login endpoint, no session, no cookie and no JWT** in this repo. `POST /api/auth/login`,
+>   `POST /api/auth/microsoft`, `GET /api/auth/me`, `POST /api/auth/logout`, the whole auth router,
+>   `signToken`/`verifyToken`, `JWT_SECRET` and `COOKIE_NAME` were all deleted.
+> - Identity arrives as the **`X-User-Id` header** (the user's email), injected by Apps Gateway after it
+>   authenticates them at the edge. `requireAuth` resolves the User row from it and answers 403
+>   `NO_ADMIN_ACCOUNT` when that email holds no Admin CMS role. The gateway's own `admin` flag is ignored;
+>   roles still come from `packages/auth/src/rbac.ts`.
+> - Login and logout are **full-page navigations** to `/auth/ui/login` and `/auth/logout`, both owned by
+>   the gateway. The browser learns who is signed in from `GET /auth/api/me`, and this app's profile from
+>   `GET /api/me`.
+> - No password is stored for anyone: `CreateAdminUserInput.password` is gone, `createAdminUser` writes no
+>   `passwordHash`, and the seed sets none.
+> - **New deployment constraint:** the app must be reachable *only* through the gateway. Direct ingress
+>   would let any caller assert an identity via `X-User-Id`. See `k8s/README.md`.
+>
+> The §"API Security" subsection and the deployment/sequence diagrams are the most affected. Sections on
+> the event lifecycle, database schema, financial-risk analysis and external connections (other than the
+> mocked-SSO row) are unaffected by this change.
+
+> **⚠️ ALSO STALE as of 2026-08-06 — the `VIEWER` role was removed.** Owner decision: read-only
+> observers are not part of the org model. `VIEWER` is gone from the `Role` Postgres enum itself
+> (`migrations/20260806120000_drop_viewer_role` recreates the type; pre-existing `VIEWER` rows become
+> `PARTICIPANT`), not merely hidden. The role set is now **`SUPER_ADMIN, EVENT_ADMIN, HR_TA,
+> PARTICIPANT`**, and `ADMIN_ROLES` is the first three. Every mention of `VIEWER` below — in the
+> business-workflow and deployment diagrams, the access-model prose, the ER diagram and the `User.role`
+> field table — describes a role that no longer exists. One consequence a reviewer should note: `VIEWER`
+> was the only Admin CMS role lacking `USER_MANAGE`, so listing users is no longer deniable to any admin
+> tier; the narrowest remaining boundary is `ROLE_MANAGE`, held only by `SUPER_ADMIN`. This also answers
+> the open question raised at §"Access model" and in TEST-SCENARIO TS-020 about whether `HR_TA`/`VIEWER`
+> being cross-event was intended: half of it is moot, and `HR_TA` remaining cross-event stands.
 
 ## 0. Scope of this document
 
@@ -51,7 +87,7 @@ partway through P8, not a P1–P5 baseline.
   day, submit structured feedback, and download a verifiable PDF certificate. `bliblitalk-admin` is the
   sole backend and hosts the admin CMS used by event administrators; `bliblitalk-user-fe` is the public
   participant portal.
-  - The RBAC role set is `SUPER_ADMIN, EVENT_ADMIN, HR_TA, VIEWER, PARTICIPANT`
+  - The RBAC role set is `SUPER_ADMIN, EVENT_ADMIN, HR_TA, PARTICIPANT`
     (`bliblitalk-admin/apps/backend/src/db/prisma/schema.prisma:10-16`). `HR_TA` is explicitly labeled
     **"Talent Acquisition"** in the admin UI, not a generic HR/IT label
     (`apps/frontend/src/pages/roles/RolesPage.tsx:24,99`), and holds `MARKETING_MANAGE` +
@@ -534,7 +570,7 @@ erDiagram
     USER {
         string id PK
         string email UK
-        string role "SUPER_ADMIN | EVENT_ADMIN | HR_TA | VIEWER | PARTICIPANT"
+        string role "SUPER_ADMIN | EVENT_ADMIN | HR_TA | PARTICIPANT"
         string employmentType "INTERNAL | EXTERNAL"
     }
     OTPCHALLENGE {
@@ -633,7 +669,7 @@ erDiagram
 | id | String (cuid) | no | PK | |
 | email | String | no | UNIQUE | login identity |
 | name | String | no | — | |
-| role | Role enum | no, default PARTICIPANT | — | `SUPER_ADMIN\|EVENT_ADMIN\|HR_TA\|VIEWER\|PARTICIPANT`; `HR_TA` is labeled "Talent Acquisition" in the admin UI |
+| role | Role enum | no, default PARTICIPANT | — | `SUPER_ADMIN\|EVENT_ADMIN\|HR_TA\|PARTICIPANT`; `HR_TA` is labeled "Talent Acquisition" in the admin UI. `VIEWER` was dropped from the enum on 2026-08-06 |
 | employmentType | EmploymentType enum | no, default EXTERNAL | — | `INTERNAL\|EXTERNAL` |
 | department | String | yes | — | |
 | position | String | yes | — | |
@@ -641,7 +677,7 @@ erDiagram
 | avatarUrl | String | yes | — | |
 | institution | String | yes | — | self-registration field, external participants (company/school/org) |
 | yearsOfExperience | String | yes | — | self-registration field |
-| passwordHash | String | **yes** | — | bcrypt, cost 10. Null for participant accounts created via `bliblitalk-user-fe`'s email-OTP registration (2026-08); admin-provisioned staff accounts (`adminUsers.service.ts`) always set it, and password login only ever applies to them |
+| passwordHash | String | **yes** | — | Legacy column, unwritten since 2026-08-06. Participants have always signed in by emailed one-time code, and staff accounts stopped storing a password when this app moved behind Apps Gateway. Kept nullable rather than dropped so pre-existing rows are not rewritten by a migration; nothing reads it |
 | createdAt | DateTime | no, default now() | — | doubles as the registration/consent timestamp for participant self-registration (GRC audit) |
 
 **Table: `OtpChallenge`** (`schema.prisma:97-117`)
