@@ -14,6 +14,17 @@ Go-live review dossier for this tool. Reviewers and approvers read this file bef
 
 <!-- (owner input) Person or team contacted when issues occur. -->
 
+David Kurniawan — david.dk@gdn-commerce.com (recorded 2026-08-07).
+
+This value is not only a contact address. The AIVA platform reads `support-contact` from
+`vibe-release.json` and turns it into three things: the Kubernetes label `app-owner`, the Apps
+Gateway `owners` value (which is what the default WHITELIST admits), and the Keycloak **staging**
+username/email. A named individual was chosen deliberately over a shared mailbox, since the value
+becomes a login identity.
+
+Consequence for review independence: the independent reviewer must be someone other than this
+person. See `## Review Evidence`.
+
 ## Vibe Start
 
 2026-07-13 (stamped by `/adopt-vibe` from the earliest git commit date, per that skill's rule for
@@ -27,9 +38,14 @@ brownfield projects.)
 - Department: free text — the owning department name (non-empty), recorded in lowercase.
 Asked during /start-vibe; /vibe-check will not pass while Company or Division is empty/invalid or Department is empty. -->
 
-- Company:
-- Division:
-- Department:
+- Company: gdn
+- Division: operations
+- Department: automation-data-insight
+
+Recorded 2026-08-07 from the owner. The department is "Automation, Data, Insight"; it is written
+here hyphenated because AIVA copies this value verbatim into the Kubernetes label `departement`,
+and a Kubernetes label value may not contain spaces or commas. Same three values are mirrored in
+`vibe-release.json`, which is what AIVA actually reads.
 
 ## Design Overview
 
