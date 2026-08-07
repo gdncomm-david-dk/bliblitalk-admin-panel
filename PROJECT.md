@@ -140,7 +140,14 @@ credential with no accountable person — name an individual.
 
 ## Access Levels
 
-Role-based access control via `@repo/auth`'s permission matrix: `SUPER_ADMIN` (full access, including staff account provisioning and role management), `EVENT_ADMIN` (scoped to their own assigned events — participants, registrations, workspace tabs), `HR_TA` (Talent Acquisition, registrant/candidate visibility), `VIEWER` (read-only), `PARTICIPANT` (self-service registration and event participation only, no admin access). Enforced server-side via `requireAuth`/`requirePermission`/`requireRole` middleware on every admin route — required detail for High risk (per the risk criteria).
+Role-based access control via `@repo/auth`'s permission matrix: `SUPER_ADMIN` (full access, including staff account provisioning and role management), `EVENT_ADMIN` (scoped to their own assigned events — participants, registrations, workspace tabs), `HR_TA` (Talent Acquisition, registrant/candidate visibility), `PARTICIPANT` (self-service registration and event participation only, no admin access). Enforced server-side via `requireAuth`/`requirePermission`/`requireRole` middleware on every admin route — required detail for High risk (per the risk criteria).
+
+**Corrected 2026-08-07:** this list previously also named a `VIEWER` (read-only) tier. That role was
+removed from the `Role` enum on 2026-08-06 (migration `20260806120000_drop_viewer_role`) and this
+section was missed at the time — the four roles above are the complete set. One consequence is worth
+stating for a reviewer rather than leaving implicit: with `VIEWER` gone, **every remaining Admin CMS
+role holds `USER_MANAGE`**, so listing users is no longer deniable to any admin tier. The narrowest
+surviving privilege boundary is `ROLE_MANAGE`, which only `SUPER_ADMIN` holds.
 
 ## Access Approval Process
 
@@ -196,6 +203,19 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
   - Checked by: Claude, 2026-08-03.
 - **2026-08-03 — GLG-002 (repo outside approved GitHub org) resolved:** owner chose "Hold — migrate to `gdncomm-ops` first" rather than push to the non-approved `gdncomm-david-dk` remote. Migration completed: `origin` renamed to `backup-origin` (kept, untouched), new `origin` set to `https://github.com/gdncomm-ops/bliblitalk-admin.git`, `feat/qa-hardening-p8` pushed as a verified fast-forward (`b0e6aec..970d353`, confirmed non-divergent via `git merge-base --is-ancestor` before push), tag `pre-split-2026-08-02` pushed, both verified landed via `git ls-remote`. See `docs/REMEDIATION.md` GLG-002 (now FIXED) for full detail. This clears blocking item 2 (`remediation-blocking-clear`, GLG-002 specifically) from the 2026-08-03 `check-golive-readiness` run above; the other 7 blocking items on that list are unaffected and remain open pending owner action.
   - Checked by: Claude, 2026-08-03.
+- **2026-08-07 — `check-golive-readiness` (`/vibe-check`) run — verdict NOT READY** (tier High, evaluated at commit `0fb7488`, working tree clean at entry):
+  - **PASS (8):** `company-only-access-default` (Access Status: External, stated and justified); **`sso-login-only` — now passing**, `## Login Method` is Apps Gateway SSO, one of the two allowed values, replacing the mocked Microsoft SSO that failed this item on 2026-08-03; `permissions-defined` (Access Levels filled; corrected this run, see below); `approved-platform-only` (Hosting Location recorded this run as GKE via the AIVA platform — an approved company platform; nothing is deployed to any unapproved platform, because nothing is deployed at all); `useful-logs-no-secrets` (scanned every `console.*`/`logger.*` call in `apps/*/src` against `never-log.json`; one match, `apps/backend/src/lib/shared/mailer.ts:56` logging `{ email, err }` — **not** a violation, that file's own guidance states email/name/role are not forbidden data); `ownership-support-contacts` (both filled 2026-08-07; `gdncomm-david-dk` confirmed a `User` and an **active member** of `gdncomm-ops` via `gh api`, and `david.dk@gdn-commerce.com` matches no denied domain or shared-account pattern); `gcp-label-set` (gdn / operations / automation-data-insight); `remediation-blocking-clear` (every `## Blocking` finding is FIXED or WAIVED with a named Information Security approver and a matching Review Evidence entry above).
+  - **FAIL (5) — these block READY:**
+    1. **`review-proof-sealed`** — no `docs/REVIEW-PROOF.md` exists in this repo at all. Fix: an independent reviewer runs `/vibe-review` in their own checkout under their own git identity.
+    2. **`approvals-complete`** (High) — no named Tech R&D/Architecture, SRE, Information Security, or GRC go-live sign-off is recorded. The issue-specific InfoSec waivers on GLG-001/DEP-002/DEP-003 cover only those findings, not the go-live decision.
+    3. **`backup-recovery`** — `## Recovery Procedures` is empty. Owner decided this run (2026-08-07) to defer it to SRE rather than write a placeholder; recorded as deferred, still failing. No Postgres backup is configured anywhere in this repo (verified: none in `k8s/`, `docker-compose.yml`, or CI).
+    4. **`design-document-complete`** — `docs/DESIGN.md` carries its own "⚠️ ALSO STALE as of 2026-08-06" banner. Fix: regenerate via the `design-document` skill.
+    5. **`test-scenario-complete`** — `docs/TEST-SCENARIO.md` has 4 STALE and 3 PENDING scenarios (27 total, 16 passed). At High every `sensitive` scenario must be PASSED; STALE means the covered code changed since it last passed. Fix: re-run `/test-scenarios`.
+  - **Corrections made to this dossier during the run** (both were stale records, not new decisions): `## Access Levels` still listed a `VIEWER` (read-only) tier that was removed from the `Role` enum on 2026-08-06 — corrected, with the resulting `USER_MANAGE` consequence stated explicitly for a reviewer. `## Hosting Location` was filled from the owner's answer this run.
+  - Worth a reviewer's attention: **GLG-001 is still recorded WAIVED**, and that waiver was explicitly scoped to "the pre-deployment/dev milestone only… re-opened before any actual production deployment". The condition it was waiting for has now been met — this app genuinely runs on Apps Gateway SSO — so GLG-001 looks resolvable to FIXED rather than waived. Not changed here: it carries a named Information Security approver, so the correction belongs to that approver, not to this gate run.
+  - Advisory backlog at gate time: 27 OPEN advisory findings — documented, none blocking, tracked in `docs/REMEDIATION.md`.
+  - `vibe-release.json` regenerated at repo root for commit `0fb7488`.
+  - Checked by: Claude, 2026-08-07.
 
 ## Security Notes
 
@@ -207,6 +227,27 @@ Remediation backlog: docs/REMEDIATION.md — 0 BLOCKING open / 1 BLOCKING fixed-
 
 <!-- The approved company platform where the tool runs. Personal or public platforms require formal approval. -->
 
+**Google Kubernetes Engine, deployed through the AIVA platform** (owner decision, 2026-08-07).
+Pipeline: git push → Tekton (dependencies/tests → SonarQube quality gate → Kaniko image build →
+Artifact Registry → Trivy scan) → GitOps image-tag update → Argo CD syncs the cluster. Staging host
+`bliblitalk-admin-staging.blibli.dev`; production `bliblitalk-admin.blibli.io` (production requires
+an explicit `deploy … to production` instruction plus a human approval task). No personal or
+public platform is involved.
+
+**Stated plainly: nothing is deployed yet.** This section records the approved *target* platform,
+not current reachability — as of 2026-08-07 this app runs locally only, and `k8s/` is documented
+placeholder material rather than applied manifests. Two prerequisites in `## Login Method` above
+(its own hostname, and being reachable only through the gateway) must be satisfied by DevOps before
+the target above is real.
+
 ## Recovery Procedures
 
 <!-- Rollback and restore steps: how to return to the previous working version. Mandatory for Medium and High risk. -->
+
+⚠️ **Outstanding — deliberately deferred to SRE (owner decision, 2026-08-07).** This is a mandatory
+item for High risk and it is **not** satisfied; `/vibe-check` fails `backup-recovery` because of it.
+It is recorded as deferred rather than filled because a real rollback/restore procedure cannot be
+written before the infrastructure above exists, and a plausible-looking placeholder here would
+mislead the approvers who read this file. Specifically still needed from SRE: Postgres backup
+schedule, retention, and a *tested* restore path — no database backup is configured anywhere in
+this repo today (verified: no backup job in `k8s/`, `docker-compose.yml`, or CI).
