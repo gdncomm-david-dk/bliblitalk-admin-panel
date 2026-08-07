@@ -326,6 +326,10 @@ export const DashboardDTO = z.object({
   recommended: z.array(EventDTO),
   nextEvent: NextEventDTO.nullable(),
   upcomingEvents: z.array(EventDTO),
+  // Events that have actually finished (status COMPLETED), newest first. Kept separate from
+  // upcomingEvents because the portal's "Learn more from past events" grid used to fall back
+  // to the upcoming list, which showed events that had not happened yet.
+  pastEvents: z.array(EventDTO),
 });
 export type DashboardDTO = z.infer<typeof DashboardDTO>;
 
