@@ -10,6 +10,15 @@ Go-live review dossier for this tool. Reviewers and approvers read this file bef
 
 <!-- (owner input) Person or team requesting and responsible for the tool. -->
 
+David Kurniawan — GitHub `gdncomm-david-dk` (recorded 2026-08-07).
+
+Membership of the approved `gdncomm-ops` org was verified, not assumed: `gh api
+user/memberships/orgs/gdncomm-ops` returned `state=active role=member`. This is the same person as
+`## Support Contact` below, which is a deliberate owner decision and has one consequence worth
+stating plainly: the independent-review exclusion set is now a single identity, so **David Kurniawan
+cannot be the reviewer**. Someone else must run `/vibe-review` in their own checkout under their own
+git identity.
+
 ## Support Contact
 
 <!-- (owner input) Person or team contacted when issues occur. -->
@@ -108,7 +117,7 @@ onboarding. Nobody here calls `POST /auth/api/apps/register`.
 | Field | Value |
 |---|---|
 | Subdomain | ⚠️ **owner input** — pattern `<service>.<public-domain>`; `bliblitalk-admin.blibli.io` (prod) / `bliblitalk-admin-staging.blibli.dev` (staging) fits the convention |
-| Owners | ⚠️ **owner input** — blocked on `## Project Owner` / `## Support Contact`, both still unset below |
+| Owners | `david.dk@gdn-commerce.com` — resolved 2026-08-07 from `## Support Contact` below (the gateway `owners` value is an email, not a GitHub username, so it comes from Support Contact and not from `## Project Owner`) |
 | Access mode | `WHITELIST` (gateway default: owners + access list). Correct for an internal CMS — `EVERYONE` would admit any signed-in company user and leave the app's own RBAC as the only gate |
 | Applied by | DevOps at `/auth/ui/apps`, or AIVA at onboarding |
 
