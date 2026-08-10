@@ -36,7 +36,6 @@ export function SpeedDatingSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink">Speed Dating Settings</h1>
       <p className="mt-1 text-sm text-muted">
         Defaults applied to every event with Speed Dating enabled. Per-event participants and sessions live in
         that event's workspace (Event Management → open an event → Speed Dating tab).

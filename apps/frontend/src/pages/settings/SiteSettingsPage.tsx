@@ -1,16 +1,164 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type {
   LoginCarouselSettingsDTO,
+  Role,
   SiteSettingsDTO,
   TestimonialDTO,
   TestimonialsSettingsDTO,
 } from "@repo/shared-types";
+import { Permission, can } from "@repo/auth";
 import { api, ApiRequestError } from "../../services/api";
+import { useAuthStore } from "../../store/authStore";
 import { FIELD_CLASS } from "../events/workspace/fieldStyles";
 import { ImageUploadField } from "../../components/ImageUploadField";
-import { PlusIcon, TrashIcon } from "../../components/icons";
+import {
+  PlusIcon,
+  TrashIcon,
+  SettingsIcon,
+  GridIcon,
+  MessageSquareIcon,
+  FilterIcon,
+  HeartIcon,
+  StarIcon,
+  AwardIcon,
+} from "../../components/icons";
+import { CategoriesPage } from "../categories/CategoriesPage";
+import { SpeedDatingSettingsPage } from "./SpeedDatingSettingsPage";
+import { FeedbackSettingsPage } from "./FeedbackSettingsPage";
+import { CertificateSettingsPage } from "./CertificateSettingsPage";
 
+/**
+ * Every settings surface in the CMS, as one tabbed page.
+ *
+ * `permission` is the permission that tab's page required back when it was its own sidebar
+ * entry, carried over verbatim. That matters: these tabs do not all need SETTINGS_MANAGE.
+ * Categories, Speed Dating, Feedback and Certificates are reachable today by roles that have
+ * no settings permission at all, and folding them under a single SETTINGS_MANAGE page would
+ * have quietly revoked access HR TA and Event Admin rely on. Gating per tab keeps every
+ * role's reach exactly as it was.
+ *
+ * This is presentation only. The API enforces the same permissions with requirePermission --
+ * hiding a tab hides a link, it does not protect an endpoint.
+ */
+const TABS = [
+  { key: "general", label: "General", icon: SettingsIcon, permission: Permission.SETTINGS_MANAGE },
+  {
+    key: "login-pages",
+    label: "Login Pages",
+    icon: GridIcon,
+    permission: Permission.SETTINGS_MANAGE,
+  },
+  {
+    key: "testimonials",
+    label: "Testimonials",
+    icon: MessageSquareIcon,
+    permission: Permission.SETTINGS_MANAGE,
+  },
+  { key: "categories", label: "Categories", icon: FilterIcon, permission: Permission.EVENT_UPDATE },
+  {
+    key: "speed-dating",
+    label: "Speed Dating",
+    icon: HeartIcon,
+    permission: Permission.SPEEDDATING_MANAGE,
+  },
+  { key: "feedback", label: "Reviews & Feedback", icon: StarIcon, permission: Permission.EVENT_READ },
+  {
+    key: "certificates",
+    label: "Certificates",
+    icon: AwardIcon,
+    permission: Permission.CERTIFICATE_MANAGE,
+  },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+/** The tabs a role may see. Used here and by the sidebar to decide whether to show Settings. */
+export function visibleSettingsTabs(role: Role) {
+  return TABS.filter((t) => can(role, t.permission));
+}
+
+/**
+ * The active tab lives in the URL (?tab=) like the event workspace, so a link to a specific
+ * settings section survives a reload and can be shared. An unknown tab -- or one this role
+ * cannot see -- falls back to the first tab they can, never to a blank panel.
+ */
 export function SiteSettingsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const user = useAuthStore((s) => s.user);
+  if (!user) return null;
+
+  const tabs = visibleSettingsTabs(user.role);
+  const tabParam = searchParams.get("tab") as TabKey | null;
+  const tab: TabKey | undefined = tabs.some((t) => t.key === tabParam)
+    ? (tabParam as TabKey)
+    : tabs[0]?.key;
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-ink">Settings</h1>
+      <p className="mt-1 text-sm text-muted">
+        Everything that is configured once and applies across the CMS and the participant portal.
+      </p>
+
+      {tabs.length === 0 ? (
+        <p className="mt-6 text-sm text-muted">
+          You do not have access to any settings. Ask a Super Admin if you think you should.
+        </p>
+      ) : (
+        <>
+          <div className="mt-5 flex gap-1 overflow-x-auto border-b border-line">
+            {tabs.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setSearchParams({ tab: t.key })}
+                  className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
+                    tab === t.key
+                      ? "border-primary font-semibold text-primary"
+                      : "border-transparent font-medium text-muted hover:text-ink"
+                  }`}
+                >
+                  <Icon width={16} height={16} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-6">
+            {tab === "general" && <GeneralTab />}
+            {tab === "login-pages" && (
+              <div className="max-w-2xl space-y-6">
+                <LoginCarouselEditor
+                  title="Admin Login Carousel"
+                  description="Slides shown on this admin CMS's own login page."
+                  apiPath="/admin/settings/login-carousel-admin"
+                />
+                <LoginCarouselEditor
+                  title="Participant Portal Login Carousel"
+                  description="Slides shown on the participant portal's login and register pages."
+                  apiPath="/admin/settings/login-carousel-portal"
+                />
+              </div>
+            )}
+            {tab === "testimonials" && (
+              <div className="max-w-2xl">
+                <TestimonialsEditor />
+              </div>
+            )}
+            {tab === "categories" && <CategoriesPage />}
+            {tab === "speed-dating" && <SpeedDatingSettingsPage />}
+            {tab === "feedback" && <FeedbackSettingsPage />}
+            {tab === "certificates" && <CertificateSettingsPage />}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GeneralTab() {
   const [settings, setSettings] = useState<SiteSettingsDTO>({ contactEmail: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,57 +188,33 @@ export function SiteSettingsPage() {
     }
   }
 
+  if (loading) return <p className="text-sm text-muted">Loading…</p>;
+
   return (
-    <div>
-      <h1 className="text-xl font-bold text-ink">Settings</h1>
-      <p className="mt-1 text-sm text-muted">
-        Site-wide contact details and login page content. Speed Dating, Reviews &amp; Feedback, and
-        Certificates each have their own dedicated settings page in the sidebar.
-      </p>
-
-      {loading ? (
-        <p className="mt-6 text-sm text-muted">Loading…</p>
-      ) : (
-        <div className="mt-6 max-w-md space-y-3">
-          <div className="rounded-2xl border border-line bg-white p-4">
-            <label className="mb-1 block text-xs font-semibold text-muted">Contact email</label>
-            <input
-              type="email"
-              value={settings.contactEmail}
-              onChange={(e) => setSettings({ contactEmail: e.target.value })}
-              className={FIELD_CLASS}
-            />
-            <p className="mt-1.5 text-xs text-muted">
-              Shown to participants as the recruitment/support contact address.
-            </p>
-          </div>
-
-          {error && <p className="text-sm font-medium text-status-red">{error}</p>}
-          {notice && <p className="text-sm font-medium text-status-green">{notice}</p>}
-
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      )}
-
-      <div className="mt-8 max-w-2xl space-y-6">
-        <LoginCarouselEditor
-          title="Admin Login Carousel"
-          description="Slides shown on this admin CMS's own login page."
-          apiPath="/admin/settings/login-carousel-admin"
+    <div className="max-w-md space-y-3">
+      <div className="rounded-2xl border border-line bg-white p-4">
+        <label className="mb-1 block text-xs font-semibold text-muted">Contact email</label>
+        <input
+          type="email"
+          value={settings.contactEmail}
+          onChange={(e) => setSettings({ contactEmail: e.target.value })}
+          className={FIELD_CLASS}
         />
-        <LoginCarouselEditor
-          title="Participant Portal Login Carousel"
-          description="Slides shown on the participant portal's login and register pages."
-          apiPath="/admin/settings/login-carousel-portal"
-        />
-        <TestimonialsEditor />
+        <p className="mt-1.5 text-xs text-muted">
+          Shown to participants as the recruitment/support contact address.
+        </p>
       </div>
+
+      {error && <p className="text-sm font-medium text-status-red">{error}</p>}
+      {notice && <p className="text-sm font-medium text-status-green">{notice}</p>}
+
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
     </div>
   );
 }

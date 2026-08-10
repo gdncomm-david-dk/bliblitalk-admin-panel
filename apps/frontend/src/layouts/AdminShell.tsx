@@ -6,12 +6,9 @@ import { useAuthStore } from "../store/authStore";
 import { cn } from "../utils/cn";
 import { BrandLogo } from "../components/BrandLogo";
 import {
-  AwardIcon,
   BarChartIcon,
   BellIcon,
-  FilterIcon,
   GridIcon,
-  HeartIcon,
   HomeIcon,
   MailIcon,
   MicIcon,
@@ -19,9 +16,9 @@ import {
   SettingsIcon,
   ShieldIcon,
   SidebarIcon,
-  StarIcon,
   UsersIcon,
 } from "../components/icons";
+import { visibleSettingsTabs } from "../pages/settings/SiteSettingsPage";
 import { UserMenu } from "../components/UserMenu";
 import { ToastContainer } from "../components/Toast";
 
@@ -32,6 +29,12 @@ interface NavLeaf {
   label: string;
   icon: (p: { width?: number; height?: number; className?: string }) => ReactElement;
   permission?: Permission;
+  /**
+   * Overrides `permission` when one entry is not gated by a single permission. Settings needs
+   * this: it is a tabbed page whose tabs each carry their own permission, so it must appear for
+   * anyone who can see at least one tab -- not only for holders of SETTINGS_MANAGE.
+   */
+  visible?: (role: Role) => boolean;
 }
 
 interface NavGroup {
@@ -45,21 +48,27 @@ const NAV: NavGroup[] = [
       { to: "/", label: "Dashboard", icon: HomeIcon },
       { to: "/events", label: "Event Management", icon: GridIcon, permission: Permission.EVENT_READ },
       { to: "/speakers", label: "Speakers", icon: MicIcon, permission: Permission.EVENT_UPDATE },
-      { to: "/categories", label: "Categories", icon: FilterIcon, permission: Permission.EVENT_UPDATE },
-      { to: "/speed-dating-settings", label: "Speed Dating", icon: HeartIcon, permission: Permission.SPEEDDATING_MANAGE },
-      { to: "/feedback-settings", label: "Reviews & Feedback", icon: StarIcon, permission: Permission.EVENT_READ },
-      { to: "/certificate-settings", label: "Certificates", icon: AwardIcon, permission: Permission.CERTIFICATE_MANAGE },
       { to: "/registrants", label: "User Management", icon: UsersIcon, permission: Permission.USER_MANAGE },
       { to: "/roles", label: "Role", icon: ShieldIcon, permission: Permission.ROLE_MANAGE },
       { to: "/marketing", label: "Marketing Email", icon: MailIcon, permission: Permission.MARKETING_MANAGE },
       { to: "/analytics", label: "Reports", icon: BarChartIcon, permission: Permission.ANALYTICS_READ },
-      { to: "/settings", label: "Settings", icon: SettingsIcon, permission: Permission.SETTINGS_MANAGE },
+      {
+        to: "/settings",
+        label: "Settings",
+        icon: SettingsIcon,
+        visible: (role) => visibleSettingsTabs(role).length > 0,
+      },
     ],
   },
 ];
 
+function isVisible(item: NavLeaf, role: Role): boolean {
+  if (item.visible) return item.visible(role);
+  return !item.permission || can(role, item.permission);
+}
+
 function visibleGroups(role: Role): NavGroup[] {
-  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || can(role, i.permission)) })).filter(
+  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => isVisible(i, role)) })).filter(
     (g) => g.items.length > 0,
   );
 }

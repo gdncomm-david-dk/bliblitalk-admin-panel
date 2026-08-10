@@ -52,8 +52,7 @@ export function CategoriesPage() {
     <div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-ink">Category Management</h1>
-          <p className="mt-1 text-sm text-muted">
+          <p className="text-sm text-muted">
             Create categories once, then pick them from each event&apos;s Overview tab.
           </p>
         </div>
