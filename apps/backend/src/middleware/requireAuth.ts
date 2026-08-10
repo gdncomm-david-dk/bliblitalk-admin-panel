@@ -38,26 +38,36 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, role: true, email: true },
-  });
+  // Wrapped because Express 4 does not catch a rejected promise from an `async` middleware:
+  // it escapes as an unhandled rejection and Node exits. A transient database problem would
+  // otherwise not fail the request, it would kill the process — which is exactly what took
+  // this backend down once while Postgres was briefly unreachable. `next(err)` routes it
+  // through errorHandler like every other failure, so the request 500s and the server lives.
+  // eventScope.ts already does this; requireAuth was the one that did not.
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true, email: true },
+    });
 
-  // 403, not 401: the gateway already signed this person in, so telling the browser to log
-  // in again would just bounce them through the gateway and back into the same wall. These
-  // two cases are what a staff account not existing, or a participant wandering in, look
-  // like — the population split (repo-split decision 4) says this backend never serves
-  // participants, and that guarantee used to live in the login handler's isAdminRole check.
-  if (!user || !isAdminRole(user.role)) {
-    return next(
-      new AppError("NO_ADMIN_ACCOUNT", "No Admin CMS account for this user. Contact IT to get access.", 403),
-    );
+    // 403, not 401: the gateway already signed this person in, so telling the browser to log
+    // in again would just bounce them through the gateway and back into the same wall. These
+    // two cases are what a staff account not existing, or a participant wandering in, look
+    // like — the population split (repo-split decision 4) says this backend never serves
+    // participants, and that guarantee used to live in the login handler's isAdminRole check.
+    if (!user || !isAdminRole(user.role)) {
+      return next(
+        new AppError("NO_ADMIN_ACCOUNT", "No Admin CMS account for this user. Contact IT to get access.", 403),
+      );
+    }
+
+    req.userId = user.id;
+    req.userRole = user.role;
+    req.userEmail = user.email;
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  req.userId = user.id;
-  req.userRole = user.role;
-  req.userEmail = user.email;
-  next();
 };
 
 /**
