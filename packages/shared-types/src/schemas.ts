@@ -61,6 +61,19 @@ export const RegisterResendInput = z.object({
 });
 export type RegisterResendInput = z.infer<typeof RegisterResendInput>;
 
+// A participant editing their own profile (bliblitalk-user-fe Account Settings). Field names
+// mirror RegisterInput so the same values keep the same names in both directions; `role` is the
+// applicant's job title, stored on User.position (User.role is the RBAC role and is not editable
+// here). Email is deliberately absent: it is the sign-in identifier, so changing it needs an
+// ownership proof (a code to the new address), not a profile save.
+export const UpdateProfileInput = z.object({
+  fullName: z.string().min(1, "Full name is required"),
+  institution: z.string().optional().nullable(),
+  role: z.string().optional().nullable(),
+  yearsOfExperience: z.string().optional().nullable(),
+});
+export type UpdateProfileInput = z.infer<typeof UpdateProfileInput>;
+
 // ---- Core DTOs (API response contracts) ----
 export const UserDTO = z.object({
   id: z.string(),
