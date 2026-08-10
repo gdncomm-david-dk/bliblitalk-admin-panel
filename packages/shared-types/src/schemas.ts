@@ -688,6 +688,27 @@ export const EventListQuery = z.object({
 });
 export type EventListQuery = z.infer<typeof EventListQuery>;
 
+// Which slice of the speaker roster the portal is asking for. Case-insensitive, and the two
+// values answer genuinely different questions rather than being a limit knob:
+//   featured (default) -> the curated strip: speakers an admin flagged, falling back to the
+//                         whole roster only so the strip is never empty
+//   all                -> the full directory behind "Show full speaker list", where a featured
+//                         filter would be actively wrong — a list that calls itself complete
+//                         must not silently hide the speakers nobody has flagged yet
+export const SpeakerScope = {
+  FEATURED: "featured",
+  ALL: "all",
+} as const;
+export type SpeakerScope = (typeof SpeakerScope)[keyof typeof SpeakerScope];
+
+export const SpeakerListQuery = z.object({
+  scope: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() : v),
+    z.nativeEnum(SpeakerScope).optional(),
+  ),
+});
+export type SpeakerListQuery = z.infer<typeof SpeakerListQuery>;
+
 // ---- Module settings (admin-configurable, singleton-per-key JSON blobs) ----
 export const SpeedDatingSettingsDTO = z.object({
   roundDurationMinutes: z.number().int().min(1).max(120),
