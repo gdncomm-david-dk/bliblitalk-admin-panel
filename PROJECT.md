@@ -247,6 +247,46 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
     manually in the browser for all three roles this session, but nothing asserts it automatically.
     UI gating only — the API still enforces `requirePermission` — but it deserves a test.
 
+- **2026-08-10 (later, second run) — go-live gate re-run (`/vibe-check`), commit `0e42316`: NOT READY.**
+  Re-run because `0e42316` added the `UpdateProfileInput` contract to `packages/shared-types`
+  (authored here, mirrored into `bliblitalk-user-fe` for its Account Settings page), which moved
+  HEAD past the `6bd48ed` the record above evaluated. Working tree clean at entry.
+  - **PASS (8 of 13):** `ownership-support-contacts`, `gcp-label-set` (gdn / operations /
+    automation-data-insight), `sso-login-only` (Apps Gateway SSO — unchanged by this commit),
+    `company-only-access-default`, `permissions-defined`, `approved-platform-only` (GKE via AIVA),
+    `useful-logs-no-secrets` (this commit adds no logging; the previous scan stands),
+    `remediation-blocking-clear` (re-verified this run: every `## Blocking` finding is FIXED or
+    WAIVED, 0 OPEN; 25 ADVISORY open — SEC-009…SEC-023, DEP-004…DEP-007, STK-001/002,
+    STR-001…STR-008 — which never block).
+  - **FAIL — `review-proof-sealed`.** `docs/REVIEW-PROOF.md` still does not exist in this repo at
+    all. High tier requires a proof sealed by a reviewer who is neither the Project Owner nor the
+    Support Contact; both are David Kurniawan, so someone else must run `/vibe-review` in their own
+    checkout under their own git identity. Unchanged since 2026-08-03.
+  - **FAIL — `approvals-complete`.** Still no named Tech R&D/Architecture, SRE, Information Security
+    or GRC **go-live** sign-off recorded for this repo. The 2026-07-24 InfoSec waivers cover
+    GLG-001/DEP-002/DEP-003 only; the 2026-07-29 names recorded in the sibling repo cover the OTP
+    login mechanism, not this repo's release.
+  - **FAIL — `backup-recovery`.** `## Recovery Procedures` is still the ⚠️ deferred-to-SRE
+    placeholder — no backup schedule, no retention, no tested restore path. **Correction to the
+    record above:** the earlier 2026-08-10 entry listed `backup-recovery` under PASS. That was
+    wrong; the section has not changed since it was deferred on 2026-08-07 and this item has been
+    failing continuously since then.
+  - **FAIL — `design-document-complete`.** `docs/DESIGN.md` still carries all three of its own
+    staleness banners (2026-08-02 repo-split, 2026-08-06 Apps Gateway, 2026-08-06 `VIEWER` removal)
+    at lines 8, 14 and 38. **Correction to the record above:** the earlier 2026-08-10 entry listed
+    this as PASS; the banners were never removed and the document was never regenerated. Fix:
+    re-run the `design-document` skill.
+  - **FAIL — `test-scenario-complete`.** `docs/TEST-SCENARIO.md` is materially out of date, worse
+    than its own `## Summary` claims. Measured this run against HEAD: of its 24 `[PASSED]`
+    scenarios, **20 are stale** — 17 (TS-001…TS-007, TS-009…TS-018) are anchored at
+    `Last-verified-commit: 32ba496` and cover files that have changed since, and 3 (TS-025, TS-026,
+    TS-027) carry **no `Last-verified-commit` at all**, so their freshness cannot be established
+    either way. 3 remain PENDING (TS-008, TS-020, TS-024). The `## Summary` block still reports
+    "16 passed / 4 stale", which no longer matches the scenario entries below it. Fix: re-run
+    `/test-scenarios` to reconcile against `0e42316`.
+  - `vibe-release.json` regenerated at repo root for commit `0e42316`; not committed by the gate.
+  - Checked by: Claude, 2026-08-10.
+
 ## Security Notes
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->

@@ -4,7 +4,7 @@
   "review-proof": null,
   "reviewed-at": null,
   "release-gate-status": "NOT-READY",
-  "target-commit-hash": "6bd48ed23fba38c913118b46a11bfd4a3484ea35",
+  "target-commit-hash": "0e42316c281fb99392072ba8d2e45c3133cd81d2",
   "generated-at": "2026-08-10",
   "start-vibe": "2026-07-13",
   "project-name": "bliblitalk-admin",
