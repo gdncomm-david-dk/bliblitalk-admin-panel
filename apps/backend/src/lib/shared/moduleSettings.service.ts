@@ -4,6 +4,7 @@ import type {
   FeedbackSettingsDTO,
   LoginCarouselSettingsDTO,
   SpeedDatingSettingsDTO,
+  TestimonialsSettingsDTO,
 } from "@repo/shared-types";
 import {
   DEFAULT_ADMIN_LOGIN_CAROUSEL_SETTINGS,
@@ -11,6 +12,7 @@ import {
   DEFAULT_FEEDBACK_SETTINGS,
   DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS,
   DEFAULT_SPEED_DATING_SETTINGS,
+  DEFAULT_TESTIMONIALS_SETTINGS,
 } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 
@@ -20,6 +22,7 @@ const KEYS = {
   certificate: "certificate",
   loginCarouselAdmin: "login_carousel_admin",
   loginCarouselPortal: "login_carousel_portal",
+  landingTestimonials: "landing_testimonials",
 } as const;
 
 /** Reads a module settings row by key, falling back to a default when unset. */
@@ -84,4 +87,15 @@ export function setPortalLoginCarousel(
   data: LoginCarouselSettingsDTO,
 ): Promise<LoginCarouselSettingsDTO> {
   return setModuleSettings(KEYS.loginCarouselPortal, data);
+}
+
+/** Landing-page testimonials: written here by admin Site Settings, read by the public portal. */
+export function getLandingTestimonials(): Promise<TestimonialsSettingsDTO> {
+  return getModuleSettings(KEYS.landingTestimonials, DEFAULT_TESTIMONIALS_SETTINGS);
+}
+
+export function setLandingTestimonials(
+  data: TestimonialsSettingsDTO,
+): Promise<TestimonialsSettingsDTO> {
+  return setModuleSettings(KEYS.landingTestimonials, data);
 }

@@ -297,6 +297,55 @@ export const DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS: LoginCarouselSettingsDTO = 
   ],
 };
 
+/**
+ * One testimonial card on the public landing page.
+ *
+ * The avatar initials are deliberately NOT a field: they are derived from `name` when the card
+ * renders, so an admin cannot leave them stale after renaming someone, and there is one less
+ * box to fill in for every entry.
+ */
+export const TestimonialDTO = z.object({
+  quote: z.string().min(1),
+  name: z.string().min(1),
+  /** Free text under the name, e.g. "Associate PM · Joined 2024". Optional — some have none. */
+  meta: z.string(),
+});
+export type TestimonialDTO = z.infer<typeof TestimonialDTO>;
+
+/**
+ * The landing page's testimonial list. An array with no fixed length: adding, removing and
+ * reordering entries is a settings edit, never a schema change — which is the whole reason this
+ * lives in ModuleSettings' JSON rather than in its own table.
+ */
+export const TestimonialsSettingsDTO = z.object({
+  items: z.array(TestimonialDTO),
+});
+export type TestimonialsSettingsDTO = z.infer<typeof TestimonialsSettingsDTO>;
+
+/** Seeded from the copy the landing page shipped with, so the page looks unchanged until edited. */
+export const DEFAULT_TESTIMONIALS_SETTINGS: TestimonialsSettingsDTO = {
+  items: [
+    {
+      quote:
+        "I asked a question at a free talk, joined the mentor circle, and three months later I had my first PM offer. Unbelievable community.",
+      name: "Fajar Ramadhan",
+      meta: "Associate PM · Joined 2024",
+    },
+    {
+      quote:
+        "The hackathon brief went straight into my portfolio. Two interviews brought it up before I could. Genuinely practical education.",
+      name: "Tania Saputri",
+      meta: "UI/UX Student · Joined 2025",
+    },
+    {
+      quote:
+        "Rp 99.000 a month is a steal for the replay library. It's become my commute podcast now, instead of scrolling randomly.",
+      name: "Robby Valeri",
+      meta: "Frontend Engineer · Joined 2023",
+    },
+  ],
+};
+
 export const CertificateDTO = z.object({
   id: z.string(),
   eventTitle: z.string(),

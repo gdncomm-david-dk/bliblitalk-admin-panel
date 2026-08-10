@@ -4,6 +4,7 @@ import {
   CertificateSettingsDTO,
   FeedbackSettingsDTO,
   LoginCarouselSettingsDTO,
+  TestimonialsSettingsDTO,
   SpeedDatingSettingsDTO,
 } from "@repo/shared-types";
 import { requireAuth, requirePermission } from "../../middleware/requireAuth";
@@ -12,11 +13,13 @@ import {
   getAdminLoginCarousel,
   getCertificateSettings,
   getFeedbackSettings,
+  getLandingTestimonials,
   getPortalLoginCarousel,
   getSpeedDatingSettings,
   setAdminLoginCarousel,
   setCertificateSettings,
   setFeedbackSettings,
+  setLandingTestimonials,
   setPortalLoginCarousel,
   setSpeedDatingSettings,
 } from "../../lib/shared/moduleSettings.service";
@@ -162,6 +165,36 @@ adminModuleSettingsRoutes.put(
   async (req, res, next) => {
     try {
       res.json(await setPortalLoginCarousel(req.body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /admin/settings/testimonials
+adminModuleSettingsRoutes.get(
+  "/settings/testimonials",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  async (_req, res, next) => {
+    try {
+      res.json(await getLandingTestimonials());
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// PUT /admin/settings/testimonials — replaces the whole list, so add/remove/reorder are all
+// just "save the array you now have". There is no per-item id to keep in sync.
+adminModuleSettingsRoutes.put(
+  "/settings/testimonials",
+  requireAuth,
+  requirePermission(Permission.SETTINGS_MANAGE),
+  validate(TestimonialsSettingsDTO),
+  async (req, res, next) => {
+    try {
+      res.json(await setLandingTestimonials(req.body));
     } catch (err) {
       next(err);
     }
