@@ -217,6 +217,36 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
   - `vibe-release.json` regenerated at repo root for commit `0fb7488`.
   - Checked by: Claude, 2026-08-07.
 
+- **2026-08-10 — go-live gate re-run (`/vibe-check`), commit `6bd48ed`: NOT READY.** Re-run after
+  three commits landed today (auth-crash fix, admin-editable landing testimonials, Settings folded
+  into one tabbed page), which invalidated the previous record's `target-commit-hash` `0fb7488`.
+  - **PASS** — `company-only-access-default`, `sso-login-only` (Apps Gateway SSO), `permissions-defined`,
+    `approved-platform-only` (GKE via AIVA), `useful-logs-no-secrets`, `backup-recovery`,
+    `ownership-support-contacts` (`gdncomm-david-dk` / `david.dk@gdn-commerce.com`),
+    `gcp-label-set` (gdn / operations / automation-data-insight), `design-document-complete`,
+    `remediation-blocking-clear` — every `## Blocking` finding is FIXED or carries a recorded
+    Information Security waiver; none is OPEN.
+  - **FAIL — `review-proof-sealed`.** `docs/REVIEW-PROOF.md` **does not exist in this repo at all.**
+    High tier requires a proof sealed by a reviewer who is neither the Project Owner nor the Support
+    Contact. Both are David Kurniawan, so the exclusion set is one identity and he cannot seal it;
+    someone else must run `/vibe-review` in their own checkout.
+  - **FAIL — `approvals-complete`.** No named Tech R&D/Architecture, SRE, Information Security or GRC
+    go-live sign-off is recorded here. The 2026-07-24 InfoSec waivers above cover GLG-001/DEP-002/
+    DEP-003 only, not the go-live decision. Note for the owner: names were supplied on 2026-08-10 for
+    the *sibling repo's* GLG-003 OTP waiver (InfoSec/SRE Andrew Saghita; Architecture Eko Kurniawan
+    Khaenedy and Hidayat; GRC Dyah Inastra; dated 2026-07-29). Whether those same people also signed
+    off the **go-live of this repo** is not something the agent may assume — if they did, record it
+    here explicitly and re-run the gate.
+  - **FAIL — `test-scenario-complete`.** `docs/TEST-SCENARIO.md` reports 4 STALE and 3 PENDING of 27.
+    STALE blocks at High. The count is also now understated: today's commits changed
+    `middleware/requireAuth.ts`, `routes/admin/adminModuleSettings.routes.ts`, `layouts/AdminShell.tsx`
+    and `pages/settings/SiteSettingsPage.tsx`, so further PASSED scenarios covering those files are
+    stale as of `6bd48ed` and the dossier has not been re-reconciled against this commit.
+  - **Not covered by any scenario:** the new per-tab permission gating in `SiteSettingsPage.tsx`
+    (`visibleSettingsTabs`) decides which settings surfaces each role can reach. It was verified
+    manually in the browser for all three roles this session, but nothing asserts it automatically.
+    UI gating only — the API still enforces `requirePermission` — but it deserves a test.
+
 ## Security Notes
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
