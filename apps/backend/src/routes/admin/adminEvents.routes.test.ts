@@ -77,6 +77,46 @@ describe("admin events CRUD", () => {
     expect(res.body.capacity).toBe(250);
   });
 
+  // TS-028: the three image fields are the contract the portal reads to pick artwork per rendered
+  // shape. A field silently dropped anywhere along create -> update -> toEventDTO would not fail a
+  // typecheck (they are all optional and nullable) and would surface only as a missing picture on
+  // a page nobody is testing — so the round trip is asserted end to end, not per layer.
+  it("round-trips all three image fields through create, PATCH and the DTO", async () => {
+    const agent = loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(
+      validPayload({
+        slug: `${TEST_SLUG_PREFIX}artwork`,
+        bannerUrl: "/api/uploads/banner.png",
+        thumbnailUrl: "/api/uploads/thumb.png",
+        posterUrl: "/api/uploads/poster.png",
+      }),
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.bannerUrl).toBe("/api/uploads/banner.png");
+    expect(created.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+    expect(created.body.posterUrl).toBe("/api/uploads/poster.png");
+
+    // Replacing one shape must leave the other two alone — the whole point of separate fields.
+    const patched = await agent
+      .patch(`/api/admin/events/${created.body.id}`)
+      .send({ posterUrl: "/api/uploads/poster-v2.png" });
+    expect(patched.status).toBe(200);
+    expect(patched.body.posterUrl).toBe("/api/uploads/poster-v2.png");
+    expect(patched.body.bannerUrl).toBe("/api/uploads/banner.png");
+    expect(patched.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+
+    // Clearing is distinct from omitting: null wipes the field, an absent key leaves it.
+    const cleared = await agent
+      .patch(`/api/admin/events/${created.body.id}`)
+      .send({ posterUrl: null });
+    expect(cleared.body.posterUrl).toBeNull();
+    expect(cleared.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+
+    const fetched = await agent.get(`/api/admin/events/${created.body.id}`);
+    expect(fetched.body.posterUrl).toBeNull();
+    expect(fetched.body.bannerUrl).toBe("/api/uploads/banner.png");
+  });
+
   it("publishes a draft; publishing an already-published event is an idempotent no-op", async () => {
     const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
