@@ -5,47 +5,33 @@
 > (go-live dossier, now completed for this repo) and `docs/ARCHITECTURE.md` (as-built architecture, still
 > not written) — see §0 below for how this document was produced.
 >
-> **⚠️ STALE as of 2026-08-02 — written before the repo-split (Phases 0–5, this repo's own
-> `CONTEXT.md`).** Every mention of `/api/public/*` or `routes/public/*` below describes code that has
-> since moved to `bliblitalk-user-fe`'s own backend; this repo now serves admin-only routes. Needs a
-> full regeneration via the `design-document` skill (diagrams re-derived from the current code) before
-> the pending independent review (task: admin — Independent review) relies on it.
+> **Regenerated 2026-08-11 against commit `08586de`.** The three staleness banners this document
+> carried (2026-08-02 repo split, 2026-08-06 Apps Gateway migration, 2026-08-06 `VIEWER` removal) are
+> **resolved**: the affected sections were re-derived from the current code rather than annotated, so the
+> diagrams and the prose now agree with each other and with the repo. What a reviewer who read the
+> previous version should know changed:
 >
-> **⚠️ FURTHER STALE as of 2026-08-06 — the Apps Gateway migration.** This app no longer authenticates
-> anyone. Read the whole authentication story below as historical: it has been replaced, not amended.
-> Specifically, and deliberately not patched inline because the diagrams and prose would still disagree
-> with each other:
+> - **This backend serves admin routes only.** `/api/public/*` and `routes/public/*` are gone; the
+>   participant portal has its own backend in `bliblitalk-user-fe`, connecting to the **same Postgres
+>   database** as a **separate, restricted role** (`bliblitalk_public` — SELECT broadly, INSERT/UPDATE on
+>   seven participant-owned tables, DELETE nowhere; `scripts/db/provision-public-role.sql`). The shared
+>   database, not a shared API, is now the coupling between the two repos.
+> - **This app authenticates nobody.** There is no login endpoint, session, cookie or JWT. Apps Gateway
+>   authenticates at the edge and forwards the signed-in user's email as the `X-User-Id` header;
+>   `requireAuth` maps it to a `User` row and answers **403 `NO_ADMIN_ACCOUNT`** when that address holds
+>   no Admin CMS role. Authorization stays this app's own (`packages/auth/src/rbac.ts`) — the gateway's
+>   `admin` flag is never reused as a role.
+> - **The role set is `SUPER_ADMIN, EVENT_ADMIN, HR_TA, PARTICIPANT`.** `VIEWER` was removed from the
+>   Postgres enum itself (`migrations/20260806120000_drop_viewer_role`; existing `VIEWER` rows became
+>   `PARTICIPANT`). Consequence a reviewer should note: `VIEWER` was the only Admin CMS role lacking
+>   `USER_MANAGE`, so listing users is no longer deniable to any admin tier — the narrowest remaining
+>   permission boundary is `ROLE_MANAGE`, held only by `SUPER_ADMIN`.
 >
-> - There is **no login endpoint, no session, no cookie and no JWT** in this repo. `POST /api/auth/login`,
->   `POST /api/auth/microsoft`, `GET /api/auth/me`, `POST /api/auth/logout`, the whole auth router,
->   `signToken`/`verifyToken`, `JWT_SECRET` and `COOKIE_NAME` were all deleted.
-> - Identity arrives as the **`X-User-Id` header** (the user's email), injected by Apps Gateway after it
->   authenticates them at the edge. `requireAuth` resolves the User row from it and answers 403
->   `NO_ADMIN_ACCOUNT` when that email holds no Admin CMS role. The gateway's own `admin` flag is ignored;
->   roles still come from `packages/auth/src/rbac.ts`.
-> - Login and logout are **full-page navigations** to `/auth/ui/login` and `/auth/logout`, both owned by
->   the gateway. The browser learns who is signed in from `GET /auth/api/me`, and this app's profile from
->   `GET /api/me`.
-> - No password is stored for anyone: `CreateAdminUserInput.password` is gone, `createAdminUser` writes no
->   `passwordHash`, and the seed sets none.
-> - **New deployment constraint:** the app must be reachable *only* through the gateway. Direct ingress
->   would let any caller assert an identity via `X-User-Id`. See `k8s/README.md`.
->
-> The §"API Security" subsection and the deployment/sequence diagrams are the most affected. Sections on
-> the event lifecycle, database schema, financial-risk analysis and external connections (other than the
-> mocked-SSO row) are unaffected by this change.
-
-> **⚠️ ALSO STALE as of 2026-08-06 — the `VIEWER` role was removed.** Owner decision: read-only
-> observers are not part of the org model. `VIEWER` is gone from the `Role` Postgres enum itself
-> (`migrations/20260806120000_drop_viewer_role` recreates the type; pre-existing `VIEWER` rows become
-> `PARTICIPANT`), not merely hidden. The role set is now **`SUPER_ADMIN, EVENT_ADMIN, HR_TA,
-> PARTICIPANT`**, and `ADMIN_ROLES` is the first three. Every mention of `VIEWER` below — in the
-> business-workflow and deployment diagrams, the access-model prose, the ER diagram and the `User.role`
-> field table — describes a role that no longer exists. One consequence a reviewer should note: `VIEWER`
-> was the only Admin CMS role lacking `USER_MANAGE`, so listing users is no longer deniable to any admin
-> tier; the narrowest remaining boundary is `ROLE_MANAGE`, held only by `SUPER_ADMIN`. This also answers
-> the open question raised at §"Access model" and in TEST-SCENARIO TS-020 about whether `HR_TA`/`VIEWER`
-> being cross-event was intended: half of it is moot, and `HR_TA` remaining cross-event stands.
+> Sections re-derived this pass: Business Workflow, both Architecture A diagrams, every sequence diagram
+> in Architecture B, Database Schema (three new/changed tables and fields), External Connections, and
+> API Security. Owner-confirmed content from the previous passes — objectives, audience, the
+> internal-network meaning, risk acceptances — is **preserved verbatim** and re-marked where the
+> migration changed what it applies to.
 
 ## 0. Scope of this document
 
@@ -60,7 +46,7 @@ this document claims to cover that repo's own internals.
 | Repo | Path | What it is | Ports (dev) |
 |---|---|---|---|
 | `bliblitalk-admin` | `D:\BlibliTalk-2.0\bliblitalk-admin` | Express + Prisma backend (sole data owner) **and** the admin CMS React frontend — **this document's scope** | backend `:4001`, admin FE `:5184` |
-| `bliblitalk-user-fe` | `D:\BlibliTalk-2.0\bliblitalk-user-fe` | Public participant-facing React portal — **no backend, no database, no secrets of its own**; a pure consumer of `bliblitalk-admin`'s public API. Has its own `docs/DESIGN.md`, `PROJECT.md`, and `docs/REMEDIATION.md`. | `:5183` |
+| `bliblitalk-user-fe` | `D:\BlibliTalk-2.0\bliblitalk-user-fe` | Public participant portal — React frontend **and, since the repo split, its own Express backend**. It holds no schema of its own: `schema.prisma`, `packages/shared-types` and `packages/auth` are byte-for-byte **generated mirrors** of this repo's copies (`pnpm sync:admin`, enforced by `pnpm check:schema-drift`). It reaches the same Postgres as the restricted `bliblitalk_public` role. Has its own `docs/DESIGN.md`, `PROJECT.md`, and `docs/REMEDIATION.md`. | backend `:4002`, portal FE `:5183` |
 
 This repo now has its own `PROJECT.md` (go-live dossier, risk level High, review evidence recorded) and
 `docs/REMEDIATION.md` (security/dependency remediation backlog) — both completed during P8. `docs/ARCHITECTURE.md`,
@@ -68,14 +54,21 @@ This repo now has its own `PROJECT.md` (go-live dossier, risk level High, review
 that would normally draw on them were reverse-engineered directly from source and migrations, with
 `file:line` evidence. ⚠️ marks everything that only the project owner can confirm.
 
-**Repo state this document describes:** phases **P1–P7** of the event-lifecycle overhaul (transition
-engine, scheduler, admin lifecycle UI, participant badge matrix, category taxonomy, create-event form
-restructure, backfill/reconciliation) are **complete**. **P8** (QA hardening & go-live gate) is
-**in progress**: governance scaffold, risk classification, the security + dependency audit, and closing
-its BLOCKING findings (including SEC-024, a cross-repo authentication-bypass finding surfaced by
-`bliblitalk-user-fe`'s own P8 audit) are done; the test-scenario dossier is written; independent review
-and the final go-live gate (P8 Tasks 6–7) remain open. This document describes the system as it stands
-partway through P8, not a P1–P5 baseline.
+**Repo state this document describes** (commit `08586de`, branch `feat/qa-hardening-p8`):
+
+- **Event-lifecycle overhaul P1–P7** — transition engine, scheduler, admin lifecycle UI, participant
+  badge matrix, category taxonomy, create-event form restructure, backfill/reconciliation — **complete**.
+- **P8 QA hardening & go-live gate** — complete, including the independent review and the go-live gate.
+- **Repo split Phases 0–5, 7** — complete. The public API left this repo; `bliblitalk-user-fe` runs its
+  own backend against the same database as a restricted role. **Phase 6 (uploads → Google Cloud Storage)
+  is deliberately deferred** and is the one known blocker on the gateway rollout (see External
+  Connections and the `/api/uploads` note in API Security).
+- **Apps Gateway migration** — complete in this repo. Login, sessions, JWTs and password storage were
+  deleted, not disabled.
+- **`VIEWER` role removal** — complete, at the Postgres enum level.
+
+This document therefore describes a repo whose governance work is finished and whose remaining known gap
+is a deployment-time one (uploads), not a partway-through-P8 snapshot as the previous version did.
 
 ---
 
@@ -135,8 +128,14 @@ server-enforced visibility into why an event's status is what it is at every mom
 business outcomes this serves are **employee career development** and **recruiting / employer branding**
 (see Product Overview); the process below is what the code proves happens, step by step.
 
-Traced from `bliblitalk-admin/apps/backend/src/routes/public/events/events.service.ts` and
-`.../public/registrations/registrations.service.ts`.
+**Whose code each lane is:** the business process spans both repos, so this diagram does too — a reviewer
+assessing "does the business workflow make sense" needs the whole chain, not this repo's slice of it. The
+**Admin** and **System** lanes are this repo. The **Participant** lane is served by `bliblitalk-user-fe`'s
+own backend and is traced from
+`bliblitalk-user-fe/apps/backend/src/routes/public/events/events.service.ts` and
+`.../public/registrations/registrations.service.ts` — its internals are that repo's `docs/DESIGN.md` to
+document, and the line references in the evidence paragraph below now point there. The two lanes meet at
+the shared Postgres database, not at an API call between the apps.
 
 ```mermaid
 flowchart TD
@@ -183,19 +182,18 @@ flowchart TD
     a5 -.->|"admin can also bulk-issue"| p8
 ```
 
-Evidence for each branch: registration eligibility and duplicate-active-registration guard
-(`events.service.ts:56-113`); shortlist-vs-instant-confirm decision at
-`decideInitialStatus` (`events.service.ts:115-126` — `showRemainingSeats===false` ⇒ every registrant
-starts `WAITING`, else FCFS instant `REGISTERED`/`WAITING`(waitlist)/rejected-with-`EVENT_FULL`); admin
-shortlist/reject/waitlist actions gated by `PARTICIPANT_SHORTLIST`
-(`apps/backend/src/routes/admin/adminParticipants.routes.ts:43-88`); attendance is **admin-only**, no
-participant self-check-in exists (confirmed absent in
-`bliblitalk-user-fe/docs/superpowers/specs/2026-07-17-lifecycle-p4-user-fe-badge-matrix-design.md:92-93`);
-feedback gated on `attendance===PRESENT` + `event.enableFeedback`, one submission only
-(`registrations.service.ts` ~lines 40-74); certificate download requires `attendance===PRESENT` and,
-if `enableFeedback` is on, requires feedback first (`FEEDBACK_REQUIRED` error otherwise) — certificates are
-generated **lazily on first download**, not by a separate admin step, though admins can also bulk-issue
-them ahead of time (`adminCertificates.service.ts:31-63`).
+Evidence for each branch. **In `bliblitalk-user-fe`'s backend** (participant lane): registration
+eligibility and the duplicate-active-registration guard; the shortlist-vs-instant-confirm decision at
+`decideInitialStatus` (`showRemainingSeats===false` ⇒ every registrant starts `WAITING`, else FCFS
+instant `REGISTERED` / `WAITING` (waitlist) / rejected-with-`EVENT_FULL`); feedback gated on
+`attendance===PRESENT` + `event.enableFeedback`, one submission only; certificate download requiring
+`attendance===PRESENT` and, when `enableFeedback` is on, feedback first (`FEEDBACK_REQUIRED` otherwise).
+**In this repo** (admin + system lanes): shortlist/reject/waitlist gated by `PARTICIPANT_SHORTLIST`
+(`apps/backend/src/routes/admin/adminParticipants.routes.ts`); attendance is **admin-only** — no
+participant self-check-in endpoint exists in either backend; the eight-state lifecycle is enforced solely
+by `transitionEvent` (`apps/backend/src/lib/lifecycle/transitionEvent.ts`); and admins can bulk-issue
+certificates ahead of time (`adminCertificates.service.ts`), though the normal path is lazy generation on
+the participant's first download.
 
 ---
 
@@ -210,76 +208,121 @@ error-tracking) exist anywhere in either repo — confirmed by exhaustive grep a
 External Connections below). The two frontends never talk to each other directly; both talk only to the
 one backend.
 
+The two apps no longer talk to each other over HTTP. Since the repo split their only coupling is the
+**shared PostgreSQL database**, reached by two different roles with two different privilege sets — the
+single most important structural fact on this diagram.
+
 ```mermaid
 flowchart LR
     participant([Participant / external candidate])
-    staff([Admin staff: Event Admin / Talent Acquisition / Viewer / Super Admin])
+    staff([Admin staff: Super Admin / Event Admin / Talent Acquisition])
 
-    portal["bliblitalk-user-fe — Public Portal (React, Vite)"]
-    adminfe["bliblitalk-admin — Admin CMS (React, Vite)"]
-    backend["bliblitalk-admin — Backend (Express + Prisma)"]
+    gateway["Apps Gateway - company SSO, authenticates at the edge"]
+
+    subgraph userfe["bliblitalk-user-fe (separate repo)"]
+      portal["Public Portal (React, Vite)"]
+      pubapi["Public Backend (Express + Prisma)"]
+    end
+
+    subgraph adminrepo["bliblitalk-admin (this repo)"]
+      adminfe["Admin CMS (React, Vite)"]
+      backend["Admin Backend (Express + Prisma) - sole schema owner"]
+    end
+
     db[("PostgreSQL 15 (citext extension)")]
     smtp["SMTP relay - external mail server"]
     disk[("Local disk - uploaded images")]
 
     participant -->|HTTPS| portal
-    staff -->|HTTPS| adminfe
-    portal -->|"REST /api/public/*, /api/auth/* (JSON, cookie session)"| backend
-    adminfe -->|"REST /api/admin/*, /api/auth/* (JSON, cookie session)"| backend
-    backend -->|Prisma ORM, read/write| db
+    portal -->|"REST /api/* (JSON, own email-OTP session)"| pubapi
+    staff -->|HTTPS| gateway
+    gateway -->|"proxies, injects X-User-Id (email)"| adminfe
+    adminfe -->|"REST /api/admin/*, /api/me (JSON, no cookie)"| backend
+
+    backend -->|"Prisma, owner role: full read/write + DDL/migrations"| db
+    pubapi -->|"Prisma, role bliblitalk_public: SELECT broadly, INSERT/UPDATE on 7 tables, no DELETE"| db
+
     backend -->|"SMTP send (marketing campaigns, event reminders)"| smtp
+    pubapi -->|"SMTP send (login one-time codes)"| smtp
     backend -->|"multer disk storage"| disk
-    backend -.->|"served back via express.static, unauthenticated"| portal
-    backend -.->|"served back via express.static, unauthenticated"| adminfe
+    disk -.->|"served unauthenticated at /api/uploads/* - read by BOTH frontends"| portal
 ```
 
-PDF certificate generation (`pdfkit`/`svg-to-pdfkit`) is deliberately **not shown as an external node** —
-it is fully in-process, no network call, no external asset fetch on render
-(`apps/backend/src/routes/public/registrations/certificate.pdf.ts`, `certificate.assets.ts:5`).
+Two things this diagram deliberately does not show as external nodes:
+
+- **PDF certificate generation** (`pdfkit` / `svg-to-pdfkit`) is fully in-process — no network call and no
+  external asset fetch on render (`apps/backend/src/routes/admin/adminCertificates.service.ts` and the
+  shared certificate renderer; fonts and logo are bundled locally).
+- **Schema mirroring** between the repos is a build-time file copy (`pnpm sync:admin`), not a runtime
+  dependency. `schema.prisma`, `packages/shared-types` and `packages/auth` are authored here and mirrored
+  byte-for-byte into `bliblitalk-user-fe`, where `pnpm check:schema-drift` fails CI on divergence. That is
+  why the two backends can share one database without a shared service.
 
 **Deployment & access boundary**
 
-The apparent contradiction in the project's own docs — `TECH_STACK.md:33,106` says the backend sits
-behind an **Internal** GKE Load Balancer ("admin CMS is not public-facing"), while `TECH_STACK.md:114`
-says `/api/public/*` is consumed by `bliblitalk-user-fe` "over the internet" — **is resolved by the
-owner as follows**: "Internal" here means **internal to Blibli's corporate network/VPN**, reachable by
-any Blibli employee or connected system, not a strict GCP-VPC-only Load Balancer that would be
-unreachable from a separately-hosted static frontend. The owner further confirmed: (1) `/api/admin/*` and
-`/api/public/*` **should eventually be split into separate Services/Ingresses** with different exposure
-levels (admin strictly corporate-network-only, public internet-facing) — this is a target-state decision,
-not yet implemented; (2) **no real GKE cluster, namespace, or Load Balancer is provisioned anywhere yet**
-— `k8s/README.md`'s "not wired yet" placeholder accurately reflects the current state, confirmed by the
-owner, not just by the absence of manifest files; (3) the **single-fullstack-container packaging remains
-the intended near-term production shape** (Express serving the built admin FE statically on one port,
-per the current `Dockerfile`) — the eventual admin/public exposure split is a future evolution of this,
-not a rejection of it. The diagram below reflects this current/near-term shape.
+The repo split resolved the exposure question that the previous version of this document had to reason
+around: the admin API and the public API are now **separate processes in separate repos**, so they can be
+given different exposure levels without splitting one Express app. The owner's earlier target-state goal
+("`/api/admin/*` and `/api/public/*` should eventually be split into separate Services with different
+exposure") is therefore **met at the code level**; what remains is provisioning.
+
+**The load-bearing deployment constraint — this app must be reachable only through Apps Gateway.**
+Identity arrives as the `X-User-Id` header and the app deliberately does **not** re-validate or strip it
+(`middleware/requireAuth.ts`, comment at the `USER_ID_HEADER` declaration): the gateway strips any
+client-supplied value before setting its own, and at the app's edge the real header and a forged one are
+indistinguishable. **Network isolation is the control.** Any ingress that reaches this backend without
+passing through the gateway lets an anonymous caller assert any identity by sending one header. This is
+not a hardening nicety; it is the authentication mechanism.
 
 ```mermaid
 flowchart TB
     candidate["Participant / external candidate (role: PARTICIPANT)"]
-    staff["Admin staff (role: EVENT_ADMIN / HR_TA / VIEWER / SUPER_ADMIN)"]
+    staff["Admin staff (role: SUPER_ADMIN / EVENT_ADMIN / HR_TA)"]
 
     subgraph public["Public Internet - publicly accessible"]
-      cdn["bliblitalk-user-fe static build - own CDN / static host"]
+      portal["bliblitalk-user-fe portal FE"]
+      pubapi["bliblitalk-user-fe public backend - own email-OTP session"]
     end
 
-    subgraph corp["Blibli corporate network / VPN - internal-only (target state, no ingress provisioned yet)"]
+    subgraph gwzone["Apps Gateway - company SSO boundary"]
+      gw["Gateway: authenticates, then injects X-User-Id (email)"]
+    end
+
+    subgraph corp["Company-internal - reachable ONLY via the gateway (no ingress of its own)"]
       adminfe["bliblitalk-admin admin CMS FE"]
-      backend["bliblitalk-admin backend - single Express process today, serves /api/public/*, /api/admin/*, /api/auth/* (target: split by exposure level)"]
-      db[("PostgreSQL (internal)")]
+      backend["bliblitalk-admin backend - /api/admin/*, /api/me"]
     end
 
-    candidate -->|"from anywhere - mock Google sign-in or bcrypt password login (NOT real OAuth, see API Security)"| cdn
-    cdn -->|"/api/public/*, /api/auth/* - documented as reachable over the public internet"| backend
-    staff -->|"from office/VPN (documented intent, unenforced) - mock 'Microsoft SSO' (NOT real OIDC, see API Security)"| adminfe
-    adminfe -->|"/api/admin/*, /api/auth/*"| backend
-    backend --> db
+    subgraph data["Data tier - internal"]
+      db[("PostgreSQL")]
+    end
+
+    candidate -->|"from anywhere - email one-time code (see user-fe DESIGN.md)"| portal
+    portal --> pubapi
+    pubapi -->|"restricted role bliblitalk_public"| db
+
+    staff -->|"company account, full-page nav to /auth/ui/login"| gw
+    gw -->|"X-User-Id: email"| adminfe
+    adminfe --> backend
+    backend -->|"owner role"| db
+
+    backend -.->|"403 NO_ADMIN_ACCOUNT when the email holds no admin role"| staff
 ```
 
-**Confirmed by the owner** (superseding the `TECH_STACK.md:104-105` unfilled `Cluster`/`Namespace`
-placeholders): "internal" means Blibli's corporate network/VPN, not a strict VPC-internal boundary; the
-admin/public API split into separate exposure levels is a target-state goal, not yet built; and no real
-GKE cluster, namespace, or Load Balancer is provisioned anywhere today.
+**What is provisioned today:** nothing. `k8s/README.md` remains a placeholder — no GKE cluster,
+namespace, or Load Balancer exists, and the gateway registration itself is a DevOps action this project
+never performs (`PROJECT.md` → Login Method records the subdomain / owners / `WHITELIST` access mode for
+DevOps to apply). The **single-fullstack-container packaging** (Express serving the built admin FE on one
+port, per the current `Dockerfile`) remains the intended shape. The owner's earlier confirmation that
+"internal" means Blibli's corporate network/VPN rather than a strict VPC-only boundary still stands, and
+is now reinforced by the gateway: the gateway is the boundary, and the app sits behind it.
+
+> ⚠️ **`PROJECT.md` → Access Status is stale and contradicts this section.** It still describes the admin
+> CMS as "gated behind Microsoft SSO" and the portal as using "Google OAuth", both of which were replaced
+> (Apps Gateway here, email-OTP there). The *classification* it drives — High risk, because this repo owns
+> the database the external-facing portal also reads — is unaffected and remains correct. Recommend
+> refreshing that field via `project-documenter` before the next review; this document does not edit
+> `PROJECT.md`.
 
 ### B. Sequence Diagrams & System Boundaries
 
@@ -287,38 +330,63 @@ No financial-asset, payment, or loyalty-point flow exists anywhere in this codeb
 below for the exhaustive grep proof) — **no sequence diagram in this document uses the colored-`rect`
 financial highlight**, since there is nothing to highlight.
 
-**Use case: Browse & register for an event (participant, role-based selection-mode branch)**
+> **Participant-facing flows moved out of this repo.** Browse/register, feedback submission and
+> certificate download are served by `bliblitalk-user-fe`'s own backend and are documented in that repo's
+> `docs/DESIGN.md`. They are not reproduced here — a design doc that diagrams another service's internals
+> goes stale the moment that service changes, which is exactly how the previous version of this section
+> became wrong. What this repo owns of those flows is the **data they read and write**, covered in the
+> Database Schema and in the admin-side sequences below.
+
+**Use case: Admin signs in (Apps Gateway; no credential ever reaches this app)**
 
 ```mermaid
 sequenceDiagram
+    actor Staff as Admin staff
+    box rgb(255,245,205) External - company SSO
+      participant GW as Apps Gateway
+    end
     box rgb(210,230,255) Our System
-      actor Candidate
-      participant Portal as bliblitalk-user-fe
-      participant API as bliblitalk-admin backend
+      participant FE as Admin CMS (SPA)
+      participant API as Admin backend
       participant DB as PostgreSQL
     end
 
-    Candidate->>Portal: browse events
-    Portal->>API: GET /api/public/events
-    API->>DB: find published/open/closed/ongoing/completed events
-    API-->>Portal: event list (never DRAFT, CANCELLED, or ARCHIVED)
-    Candidate->>Portal: register, optional Speed Dating opt-in
-    Portal->>API: POST /api/public/events/:slug/register
-    API->>DB: check registration window, capacity, duplicate-active guard
+    Staff->>FE: open the CMS
+    FE->>GW: GET /auth/api/me (is anyone signed in?)
 
-    alt selectionMode = CURATED (showRemainingSeats = false)
-      API->>DB: create Registration status WAITING
-      API-->>Portal: waiting for admin shortlist decision
-    else selectionMode = FCFS, seat available
-      API->>DB: create Registration status REGISTERED
-      API-->>Portal: instantly confirmed
-    else FCFS, event full, waitingListEnabled = true
-      API->>DB: create Registration status WAITING (waitlist)
-      API-->>Portal: on waitlist
-    else FCFS, event full, waitingListEnabled = false
-      API-->>Portal: 400 EVENT_FULL, no registration created
+    alt not signed in
+      GW-->>FE: 401
+      FE->>GW: full-page navigation to /auth/ui/login?redirect=...
+      Note over Staff,GW: the company credential is entered at the gateway - this app never sees it
+      GW-->>Staff: authenticated, redirected back
+    end
+
+    GW-->>FE: {email, ...}
+    FE->>API: GET /api/me
+    Note over GW,API: the gateway strips any client-supplied X-User-Id and injects its own
+    API->>DB: SELECT User WHERE email = X-User-Id
+
+    alt no User row, or role not in ADMIN_ROLES
+      API-->>FE: 403 NO_ADMIN_ACCOUNT ("Contact IT to get access")
+    else admin account
+      API-->>FE: {user: name, role, avatar}
+      FE->>FE: render shell, filter nav by the role's permissions
     end
 ```
+
+Three properties a reviewer should check against the code:
+
+- **403, not 401, for a non-admin.** A 401 would bounce the browser back to the gateway, which would
+  re-authenticate the same person and return them to the same wall — an infinite redirect
+  (`requireAuth.ts`, comment above the `NO_ADMIN_ACCOUNT` throw). The 403 also preserves the
+  population split: this backend never serves participants, a guarantee that used to live in the deleted
+  login handler.
+- **The gateway's own `admin` flag is ignored.** It describes gateway app-management rights, not this
+  app's roles; authorization comes only from `packages/auth/src/rbac.ts` (`requirePermission` JSDoc).
+- **The local-dev simulation compiles out.** `/dev-login` stores an email in `localStorage` and
+  `authHeaders()` sends it as `X-User-Id`, guarded by `import.meta.env.DEV` alone — Vite folds that to
+  `false`, so the code is *removed* from a production bundle rather than skipped at runtime
+  (`apps/frontend/src/services/gatewayAuth.ts`; asserted by TEST-SCENARIO TS-026).
 
 **Use case: Admin creates and publishes an event (single write path via transitionEvent)**
 
@@ -393,7 +461,7 @@ sequenceDiagram
     alt role = EVENT_ADMIN
       API->>DB: check Event.admins includes this admin's userId
       DB-->>API: allowed only if scoped to this event
-    else role = SUPER_ADMIN / HR_TA / VIEWER
+    else role = SUPER_ADMIN / HR_TA
       API->>DB: no event-ownership check - access governed by permission matrix alone
     end
 
@@ -407,50 +475,63 @@ sequenceDiagram
     API->>DB: update Registration.attendance
 ```
 
-Event-scoping (`isEventScoped`, `packages/auth/src/rbac.ts:82-84`) applies **only** to `EVENT_ADMIN` —
-`SUPER_ADMIN`/`HR_TA`/`VIEWER` see every event platform-wide, gated purely by the permission matrix.
-⚠️ Confirm this is the intended org model (HR_TA/VIEWER as cross-event roles), not an oversight.
+Event-scoping (`isEventScoped`, `packages/auth/src/rbac.ts`) applies **only** to `EVENT_ADMIN` —
+`SUPER_ADMIN` and `HR_TA` see every event platform-wide, gated purely by the permission matrix. The
+function's own comment states this is deliberate: *"HR_TA works across events and is scoped per feature by
+the API instead."* ⚠️ **Still open (TEST-SCENARIO TS-020):** whether `HR_TA` being cross-event is the
+intended org model. The `VIEWER` half of this question is moot — that role no longer exists.
 
-**Use case: Feedback submission and certificate download (gated chain)**
+**Use case: Admin bulk-issues certificates (this repo's half of the certificate story)**
+
+The participant's own download path — and the `NOT_ATTENDED` / `FEEDBACK_REQUIRED` /
+`CERTIFICATES_DISABLED` gate chain in front of it — lives in `bliblitalk-user-fe`'s backend and is
+documented there. What this repo owns is the admin-initiated bulk issue, and the fact that **both paths
+write the same `Certificate` table** and must agree on its uniqueness rule.
 
 ```mermaid
 sequenceDiagram
     box rgb(210,230,255) Our System
-      actor Candidate
-      participant Portal as bliblitalk-user-fe
+      actor Admin
+      participant AdminFE as bliblitalk-admin admin CMS
       participant API as bliblitalk-admin backend
       participant DB as PostgreSQL
     end
 
-    Candidate->>Portal: open "My Events", select an attended event
-    Portal->>API: POST /api/public/me/registrations/:id/feedback
+    Admin->>AdminFE: open the event's Certificates tab, issue for attendees
+    AdminFE->>API: POST /api/admin/events/:id/certificates (requires CERTIFICATE_MANAGE + event-scope)
+    API->>DB: read Event - 400 CERTIFICATES_DISABLED if enableCertificate = false
 
-    alt attendance != PRESENT
-      API-->>Portal: 400 NOT_ATTENDED
-    else event.enableFeedback = false
-      API-->>Portal: 400 FEEDBACK_DISABLED
-    else already submitted
-      API-->>Portal: 400 ALREADY_SUBMITTED
-    else eligible
-      API->>DB: create Feedback row (7 rating dimensions + NPS + free text)
-      API-->>Portal: feedback recorded
+    par one round trip each
+      API->>DB: registrations WHERE attendance = PRESENT AND status NOT IN (CANCELLED, REJECTED)
+    and
+      API->>DB: existing Certificates for this event (userId only)
     end
 
-    Candidate->>Portal: download certificate
-    Portal->>API: GET /api/public/me/registrations/:id/certificate
+    API->>API: toIssue = attendees MINUS alreadyIssued (in-memory Set)
 
-    alt attendance != PRESENT
-      API-->>Portal: 403 - certificate not yet available
-    else enableFeedback = true and feedback not yet submitted
-      API-->>Portal: 400 FEEDBACK_REQUIRED
-    else enableCertificate = false
-      API-->>Portal: 400 CERTIFICATES_DISABLED
-    else eligible
-      API->>DB: find-or-create Certificate row (unique verificationCode)
-      API->>API: renderCertificatePdf - in-process pdfkit, no network call
-      API-->>Portal: PDF file download
+    loop per userId in toIssue
+      API->>DB: INSERT Certificate (userId, eventId, generateVerificationCode())
     end
+
+    API-->>AdminFE: {generated: n, certificates: [...]}
 ```
+
+⚠️ **Finding for the reviewer — nothing in the database prevents a duplicate certificate.**
+`generateCertificatesForEvent` (`apps/backend/src/routes/admin/adminCertificates.service.ts`) de-duplicates
+by reading the event's existing certificates into an in-memory `Set` and skipping those `userId`s. That
+check is **application-level and non-atomic**, and the `Certificate` model has a unique constraint on
+`verificationCode` **only** — there is no `@@unique([userId, eventId])`. Two consequences:
+
+- Two concurrent admin bulk-issues for the same event, or a bulk-issue racing the participant's own lazy
+  first-download in the **other repo's backend**, can both pass the `Set` check and both insert. The
+  attendee ends up with two valid certificates carrying different verification codes.
+- The window is small and the impact is reputational rather than financial (there is no money in this
+  system — see Financial Risks), which is presumably why it has not bitten. But it is a real gap, it
+  spans two repos that no single test exercises together, and the fix is cheap: a
+  `@@unique([userId, eventId])` on `Certificate` plus catching the resulting `P2002` as "already issued".
+
+This is recorded here rather than silently fixed because it is a schema change with a migration, outside
+the scope of regenerating a design document.
 
 **Use case: Marketing email campaign (real SMTP integration)**
 
@@ -734,8 +815,9 @@ rather than an abandoned attempt.
 | eventCode | String | yes | — | |
 | title | String | no | — | |
 | subtitle | String | yes | — | |
-| bannerUrl | String | yes | — | |
-| thumbnailUrl | String | yes | — | |
+| bannerUrl | String | yes | — | Wide hero strip (~1600×400): event detail hero, landing spotlight, admin workspace header. One of three per-shape image fields — see the note below the table |
+| thumbnailUrl | String | yes | — | Landscape card (~800×500): every list/card/row surface in both apps |
+| posterUrl | String | yes | — | Portrait poster (~640×960): the tall poster column of a My Events row. Added 2026-08-11 (`migrations/20260811100000_event_poster_url`) |
 | description | String | no | — | |
 | categoryId | String | no | FK → EventCategory | ON DELETE RESTRICT |
 | tags | String[] | no, default [] | — | |
@@ -779,6 +861,22 @@ rather than an abandoned attempt.
 Indexes: `@@index([status, registrationOpensAt])`, `@@index([status, registrationDeadline])`,
 `@@index([status, startsAt])`, `@@index([status, endsAt])` — added specifically to serve the scheduler's
 candidate-fetch queries (migration `20260716105058_lifecycle_scheduler_indexes`).
+
+**The three image fields are one per rendered shape, not one image reused everywhere.** An admin uploads
+whichever they care about; each is optional, and the *consumer* resolves a fallback chain rather than the
+database storing a default. The portal's resolver (`bliblitalk-user-fe/apps/frontend/src/utils/eventImage.ts`)
+is the single place that decides:
+
+| Slot shape | Fallback chain | Why |
+|---|---|---|
+| `poster` (2:3) | `posterUrl → thumbnailUrl → bannerUrl` | A wider image cropped to portrait still reads as a photo |
+| `card` (16:10) | `thumbnailUrl → bannerUrl` | Same reasoning, one step shorter |
+| `wide` (~4:1) | `bannerUrl` **only — no fallback** | A portrait or card image cropped to a 4:1 strip reads as a broken image. A branded gradient placeholder is the better failure |
+
+This repo's responsibility is only to store the three fields and return them distinctly — asserted end to
+end by TEST-SCENARIO **TS-028** (`adminEvents.routes.test.ts` for the write path, `mappers.test.ts` for
+`toEventDTO`). ⚠️ Note the cross-repo seam: the fallback *policy* lives in the other repo, and no test
+exercises the storage and the policy together.
 
 **Table: `Registration`** (`schema.prisma:209-226`)
 
@@ -957,32 +1055,42 @@ task only becomes relevant if real legacy-status data exists at the time P7 runs
 
 ## External Connections & Integrations
 
-Both repos have exactly **one real outbound-network integration** (SMTP email), one fully in-process
-capability (PDF generation — explicitly **not** external), and one local-disk capability (file uploads —
-explicitly **not** cloud storage). Microsoft/Google "SSO" makes **zero** real outbound network calls today
-(see API Security). No queue/broker, no cloud-storage SDK, no third-party SaaS SDK (payments, analytics,
-error-tracking) exists anywhere — confirmed by exhaustive grep across both repos.
+This repo has exactly **one real outbound-network integration** (SMTP email), one identity boundary it
+consumes rather than calls (Apps Gateway), one fully in-process capability (PDF generation — explicitly
+**not** external), and one local-disk capability (file uploads — explicitly **not** cloud storage). No
+queue/broker, no cloud-storage SDK, no third-party SaaS SDK (payments, analytics, error-tracking) exists
+anywhere — confirmed by exhaustive grep across both repos.
+
+The row that used to describe the portal calling this backend is **gone**: since the repo split the portal
+has its own backend, and the two apps meet at the database, not over HTTP. The mocked Microsoft/Google
+"SSO" row is **gone** too — that code was deleted, not replaced in place.
 
 | Integration | Direction | What (data) | Why (purpose) | Where (host/endpoint/zone) | When (trigger/frequency) | How (protocol + auth) |
 |---|---|---|---|---|---|---|
+| Apps Gateway | inbound (the gateway calls us; we never call it server-side) | The signed-in user's email in `X-User-Id`; the browser separately reads `GET /auth/api/me` | Company SSO — this app's entire authentication | Gateway subdomain in front of this app; registration is a DevOps action (see `PROJECT.md` → Login Method) | Every request to every non-probe path | HTTP header injection. The gateway strips any client-supplied `X-User-Id` first; **the app does not re-validate it, so network isolation is the control** |
 | SMTP relay | outbound | Recipient email/name, campaign or reminder HTML body | Marketing email campaigns; event reminders (custom + shortlist-result) | `SMTP_HOST`/`PORT` env vars — **owner-confirmed**: owned by Blibli's IT/infra team and already provisioned (real credentials injected at deploy time, never checked into either repo) | Campaign: admin-initiated, synchronous, one-shot. Reminders: 60s scheduler tick, sends any `PENDING` row past its `sendAt` | SMTP (port from env; TLS if port 465), optional username/password auth |
-| bliblitalk-user-fe → bliblitalk-admin backend | outbound (from user-fe's perspective) / inbound (from admin's) | All portal API traffic: browse/register/dashboard/my-events/feedback/certificate/auth | The portal has no backend of its own — this is its only data source | `VITE_API_BASE_URL` (prod: deployed backend's public origin; dev: `/api` via Vite proxy to `:4001`) | Every page load / user action | HTTPS REST + JSON, httpOnly cookie session (`credentials: "include"`), CORS-restricted on the backend to the portal's exact origin |
-| Google Calendar deep link | outbound (browser navigation only, no data sent from either server) | Event title/time/location as URL params | "Add to Google Calendar" convenience link | `calendar.google.com/calendar/render` | User click on the event detail page | Plain URL, no API key, no OAuth |
-| Local disk uploads | n/a (not external) | Event banner/thumbnail/speaker avatar images | Admin-uploaded assets | `apps/backend/uploads/` on the backend's own filesystem | `POST /api/admin/uploads` | multipart/form-data; served back unauthenticated at `/api/uploads/*` |
-| Microsoft "SSO" / Google "OAuth" | n/a today (fully mocked) | `{email, name}` sent as plain JSON, no token | Placeholder for a future real OIDC/OAuth integration | `POST /api/auth/microsoft`, `POST /api/auth/google` | Login button click | Same-origin JSON POST — **not** a real external IdP call; see API Security |
+| Shared PostgreSQL ← `bliblitalk-user-fe` backend | inbound (another service reads/writes the database this repo owns) | Events, registrations, feedback, certificates, OTP challenges | The portal's backend serves participants from the same data this CMS administers | Same database instance; separate Postgres role `bliblitalk_public` | Continuously, on portal traffic | Postgres protocol. **Least privilege enforced in the database, not in application code**: SELECT broadly, INSERT/UPDATE on seven participant-owned tables, **no DELETE anywhere** (`scripts/db/provision-public-role.sql`) |
+| Google Calendar deep link | outbound (browser navigation only, no data leaves either server) | Event title/time/location as URL params | "Add to Google Calendar" convenience link | `calendar.google.com/calendar/render` | User click on the event detail page | Plain URL, no API key, no OAuth |
+| Local disk uploads | n/a (not external) | Event banner/thumbnail/poster and speaker avatar images | Admin-uploaded assets | `apps/backend/uploads/` on the backend's own filesystem | `POST /api/admin/uploads` | multipart/form-data; served back **unauthenticated** at `/api/uploads/*`, read by **both** frontends |
 
 Cross-reference: no `docs/DEPENDENCIES.md` exists yet in either repo — recommend generating one (e.g. via
 `project-documenter`) to carry the full npm-package vendor inventory; this table covers only genuine
 network/boundary crossings, not every library dependency.
 
+**⚠️ Known blocker on the gateway rollout — the uploads path.** Behind Apps Gateway every non-probe path
+is login-required, so an anonymous portal visitor fetching `<img src="/api/uploads/...">` would be
+redirected to the gateway's login UI and the images would break. The fix is **Phase 6 (uploads → Google
+Cloud Storage)**, which is deferred; widening the gateway's public path prefix to paper over it is
+explicitly rejected in the code comment at `app.ts` and in `PROJECT.md` → Login Method. Until Phase 6
+lands, an admin-uploaded image renders in the CMS but **not** on a deployed public portal. This is the
+single largest open item in this document.
+
 **Owner-confirmed decisions on the boundary crossings above:** the SMTP relay is owned by Blibli's
-IT/infra team and already provisioned. The mocked Google/Microsoft sign-in **will be replaced with real
-OAuth/OIDC before any production/go-live** (see API Security). ⚠️ **Still open:** whether the local-disk
-upload store is meant to move to durable/cloud storage before a multi-replica or redeployable production
-rollout (today: local ephemeral disk on the backend container — not persisted across restarts, not backed
-by GCS/S3/Azure Blob; a real risk once the container is redeployed or scaled past one replica), and the
-intended production value of `VITE_API_BASE_URL` (the portal's deployed backend origin) — both are
-deployment-time decisions the owner did not settle in this pass.
+IT/infra team and already provisioned. The mocked Google/Microsoft sign-in was to be *"replaced with real
+OAuth/OIDC before any production/go-live"* — **that commitment is now met** for this repo, by Apps Gateway
+rather than a direct IdP integration. ⚠️ **Still open:** durability of the upload store (today: local
+ephemeral disk on the backend container — not persisted across restarts, not backed by object storage; a
+real risk once the container is redeployed or scaled past one replica), which Phase 6 also resolves.
 
 ---
 
@@ -1009,52 +1117,58 @@ There is no `docs/SECURITY.md` in either repo yet (confirmed by filename search)
 this summary carries the seed findings directly — **recommend authoring `docs/SECURITY.md`** (e.g. via a
 dedicated OWASP-style review) using the detail below as its starting material.
 
-- **Authentication / login:** Standard path is bcrypt password login (`POST /auth/login`) for both
-  frontends. **"Continue with Microsoft" (admin CMS) and "Continue with Google" (portal) are explicitly
-  MOCK integrations, not real OAuth/OIDC** — CONFIRMED,
-  `apps/backend/src/routes/public/auth/auth.routes.ts:35-77`: the endpoints accept a plain `{email, name}`
-  JSON body with **no token, no signature verification of any kind**, and resolve/create a `User` by email
-  alone. The codebase's own `AuthProvider` interface comment states real SSO is a planned-but-unbuilt
-  "Zone 2" item (`AuthProvider.ts:15-19`). **Practical consequence, stated plainly for the reviewer:** as
-  shipped today, anyone who can reach `POST /api/auth/microsoft` and knows (or guesses) an existing
-  admin's email address obtains a full authenticated admin session — no password, no real identity
-  verification. This is pre-production placeholder code per the comments. **Owner-confirmed:** this endpoint
-  is reachable **only in local development today** — no shared, staging, or production environment exposes
-  it — and a **real OAuth/OIDC integration (e.g. Entra ID / Azure AD) is a required gate before any
-  production/go-live**. The mock therefore is not a live exposure risk today, but it is a hard blocker on
-  the go-live checklist: real IdP verification must land before this reaches any shared environment.
-- **Authorization model:** RBAC via a single shared `packages/auth/src/rbac.ts` — 5 roles, 15 permissions,
-  consumed identically by backend middleware and the admin frontend's nav filtering (no permission-matrix
-  drift between client and server, a genuinely good architectural choice). Every `/api/admin/**` route
-  (except the dashboard, which uses a coarse role-allowlist) is gated by a specific `Permission` constant;
-  `EVENT_ADMIN` is additionally scoped to only its own assigned events. Frontend nav-hiding is UX-only —
-  the backend's `requirePermission`/`requireEventAccess` checks are the actual, authoritative enforcement
-  boundary (CONFIRMED: no page-level route guard exists client-side beyond the binary admin/non-admin
-  check, `apps/frontend/src/app/App.tsx`).
-- **Encryption & sensitive data:** Session is a signed JWT (`jsonwebtoken`, 7-day expiry) in an httpOnly
-  cookie; `secure` flag is conditional on `NODE_ENV=production` (expected for local dev). **The JWT secret
-  falls back to a hardcoded default `"dev-only-change-me"`** if `JWT_SECRET` is unset (renamed from
-  `ADMIN_JWT_SECRET` in Phase 7 of the repo split — it is no longer admin-only, since
-  `bliblitalk-user-fe`'s backend must set the exact same value; see `apps/backend/src/config.ts`), and
-  the checked-in dev `.env` literally uses that same default value.
-  ⚠️ The real secret-management mechanism for a deployed environment is not settled — the placeholder
-  `k8s/README.md` never actually wires a `Secret` resource, and no infrastructure exists yet (see Deployment).
-  No token revocation/blacklist exists — logout only clears the cookie, the JWT itself remains valid for its
-  full 7-day life.
-- **Other findings worth the reviewer's attention:** no rate limiting or brute-force protection on
-  `/auth/login` (no lockout, no backoff, no CAPTCHA — confirmed absent, no such dependency exists); no CSRF
-  token (mitigated somewhat by `sameSite: "lax"` cookies + origin-restricted CORS, but no belt-and-suspenders
-  token); no `helmet`/security-headers middleware (no CSP, no `X-Frame-Options`); passwords require only an
-  8-character minimum with no complexity rules. CORS itself is soundly designed — three separate per-prefix
-  mounts (`/api/auth`, `/api/public`, `/api/admin`), never a wildcard, each trusting only its own known
-  frontend origin(s) (`apps/backend/src/app.ts:39-54`).
-- **Risk acceptance (owner-confirmed):** the missing rate-limiting, missing CSRF token, and the hardcoded
-  fallback JWT secret are **accepted risks for now**, on the basis that the current/near-term deployment is
-  internal to Blibli's corporate network/VPN (see Deployment). This acceptance is **explicitly scoped to the
-  internal-network model** — it must be revisited if the exposure changes (e.g. when `/api/public/*` is
-  genuinely internet-facing, or before any public rollout). The real-OIDC replacement (above) is *not* part
-  of this acceptance — it remains a hard go-live blocker. Recommend recording this risk acceptance formally
-  (e.g. in `PROJECT.md` Review Evidence / a security sign-off) rather than only here.
+- **Authentication:** **none in this app, by design.** Apps Gateway (the approved company SSO)
+  authenticates at the edge and forwards the user's email as `X-User-Id`. There is no login endpoint, no
+  session, no cookie, no JWT and no stored password anywhere in this repo — the previous mocked-SSO and
+  bcrypt-password code was **deleted**, and with it the finding that "anyone who can reach
+  `POST /api/auth/microsoft` and guesses an admin's email obtains a full admin session." `requireAuth`
+  (`apps/backend/src/middleware/requireAuth.ts`) maps the header to a `User` row and returns **403
+  `NO_ADMIN_ACCOUNT`** if the address holds no admin role.
+  - **The security of this rests entirely on network isolation.** The app deliberately does not
+    re-validate or strip `X-User-Id`, because at its edge a gateway-set header and a client-set one are
+    indistinguishable — stripping would discard the real one too. If this backend is ever reachable
+    without traversing the gateway, **any anonymous caller can become any admin by sending one header.**
+    A reviewer should treat "no ingress of its own" as a security control, not a deployment preference.
+  - The gateway's own `admin` flag is never reused as a role; authorization stays with `@repo/auth`.
+  - The DEV-only gateway simulation (`/dev-login` + `authHeaders()`) is compiled out of production builds
+    by `import.meta.env.DEV`, verified by TEST-SCENARIO **TS-026** against the built bundle.
+- **Authorization model:** RBAC via a single shared `packages/auth/src/rbac.ts` — **4 roles** (3 of them
+  admin) and 15 permissions, consumed identically by backend middleware and the admin frontend's nav
+  filtering, so the client and server cannot drift. Every `/api/admin/**` route (except the dashboard,
+  which uses a coarse role-allowlist) is gated by a specific `Permission`; `EVENT_ADMIN` is additionally
+  scoped to its own assigned events. Frontend nav-hiding is UX-only — `requirePermission` /
+  `requireEventAccess` on the server is the authoritative boundary.
+  - **Regression a reviewer should note from the `VIEWER` removal:** `VIEWER` was the only Admin CMS role
+    lacking `USER_MANAGE`, so `GET /api/admin/users` is no longer deniable to any admin tier. The
+    narrowest remaining permission boundary is `ROLE_MANAGE` (`SUPER_ADMIN` only), and the denial tests
+    were re-pointed at it — a narrower boundary than before, not a weaker one.
+- **Encryption & sensitive data:** no session token exists to protect, so the entire JWT-secret finding
+  from the previous version — the hardcoded `"dev-only-change-me"` fallback, the checked-in dev `.env`
+  using it, the absent revocation list, the 7-day validity window — **no longer applies to this repo.**
+  `JWT_SECRET` and `COOKIE_NAME` are gone from `config.ts`. Cookies are not read at all: there is no
+  `cookie-parser`. What remains sensitive here is participant PII in the database (names, emails,
+  institution, years of experience) and the SMTP credentials, both injected as env vars.
+  - Log redaction is retained deliberately even though this app issues no session: `LOG_REDACT_PATHS`
+    still strips `req.headers.cookie`, `authorization` and `set-cookie`, because the *gateway's* cookie
+    rides along on every request (`app.ts`).
+- **Controls present today:** an admin API rate limiter (`createAdminApiRateLimiter`, 15-minute window)
+  mounted across `/api/admin`; `trust proxy = 1` set to match the documented single-proxy topology so
+  per-client buckets don't collapse into one; upload validation with a **5 MB** size cap and a MIME
+  allowlist (PNG/JPG/WEBP/GIF, 415 otherwise); per-prefix CORS mounts (`/api/me`, `/api/admin`), never a
+  wildcard, `credentials` removed along with the cookie.
+- **Controls still absent:** no `helmet` / security-headers middleware — no CSP, no `X-Frame-Options`
+  (confirmed: `helmet` is not a dependency). CSRF is now largely moot for this app — with no cookie-based
+  session, a cross-site request carries no ambient credential, and the gateway's own cookie is not what
+  authorizes the call; `X-User-Id` is, and a browser cannot set it cross-origin. The uploads path
+  (`/api/uploads/*`) is served unauthenticated by design and is the one surface that is not behind a
+  permission check.
+- **Risk acceptance (owner-confirmed, re-scoped this pass):** the earlier acceptance covered "missing
+  rate-limiting, missing CSRF token, and the hardcoded fallback JWT secret" on the basis of an
+  internal-network deployment. Two of those three are **resolved rather than accepted** (a rate limiter
+  now exists; the JWT secret is gone with the sessions). What remains accepted is the absence of security
+  headers, and the unauthenticated uploads path — the latter only until Phase 6. The acceptance remains
+  **scoped to the internal-network model** and must be revisited if exposure changes. It is recorded in
+  `PROJECT.md` Review Evidence, not only here.
 - **Compliance:** ⚠️ owner input — no compliance requirements are stated anywhere in either repo.
 
 ---
@@ -1066,11 +1180,11 @@ dedicated OWASP-style review) using the detail below as its starting material.
 - [x] Objectives / goals stated (owner-confirmed: employee career development + recruiting/employer branding; no numeric KPI set yet)
 - [x] Business workflow diagram included
 - [x] Component diagram included
-- [x] Deployment diagram included (access/trust boundary: who, from where, network-only vs public, login) — owner resolved the internal-vs-public-facing meaning; no real infra provisioned yet (documented, not fabricated)
-- [x] Sequence diagrams included for major use cases
-- [x] System boundaries clearly defined
+- [x] Deployment diagram included (access/trust boundary: who, from where, network-only vs public, login) — now shows the Apps Gateway boundary and the gateway-only-reachability constraint; still no real infra provisioned (documented, not fabricated)
+- [x] Sequence diagrams included for major use cases — participant-facing flows deliberately delegated to `bliblitalk-user-fe`'s own DESIGN.md rather than duplicated
+- [x] System boundaries clearly defined — including the shared-database boundary between the two repos and the two Postgres roles
 - [x] Role-based access differences shown where they exist
-- [x] All Mermaid diagrams parse locally — 12/12 blocks pass via a local headless `mermaid` + `jsdom` parse (`mmdc` was not on PATH; static-lint fallback not needed)
+- [x] All Mermaid diagrams parse locally — **12/12** blocks pass. Method: local headless `mermaid` 11.16.1 + `jsdom` 30.0.1, `mermaid.parse()` per block (`mmdc` was not on PATH; the static-lint fallback was not needed, and nothing was sent to a hosted renderer). One block failed on the first run — an unquoted `;` in sequence text, which Mermaid reads as a statement separator — and was fixed before finalizing
 
 ### Data & Integrations
 - [x] Database schema documented (fields, types, descriptions)
