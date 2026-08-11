@@ -1,4 +1,4 @@
-import type { Certificate, User } from "@prisma/client";
+import { Prisma, type Certificate, type User } from "@prisma/client";
 import { Attendance, RegistrationStatus } from "@repo/shared-types";
 import type { AdminCertificateDTO, GenerateCertificatesResult } from "@repo/shared-types";
 import { prisma } from "../../db/client";
@@ -52,12 +52,25 @@ export async function generateCertificatesForEvent(
   const alreadyIssued = new Set(existing.map((c) => c.userId));
   const toIssue = attendees.filter((a) => !alreadyIssued.has(a.userId));
 
+  // The Set above is a fast path, not a guarantee: it was read before this loop started, so a
+  // second admin clicking the same button, or the attendee downloading their own certificate
+  // from bliblitalk-user-fe, can insert a row for someone in `toIssue` while we are still
+  // working through it. Certificate's @@unique([userId, eventId]) turns that into a P2002
+  // instead of a duplicate, and losing the race is a success for the caller — the attendee has
+  // their certificate either way. Counted separately so `generated` reports rows this call
+  // actually inserted rather than rows it intended to.
+  let generated = 0;
   for (const { userId } of toIssue) {
-    await prisma.certificate.create({
-      data: { userId, eventId, verificationCode: generateVerificationCode() },
-    });
+    try {
+      await prisma.certificate.create({
+        data: { userId, eventId, verificationCode: generateVerificationCode() },
+      });
+      generated += 1;
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
+    }
   }
 
   const certificates = await listEventCertificates(eventId);
-  return { generated: toIssue.length, certificates };
+  return { generated, certificates };
 }

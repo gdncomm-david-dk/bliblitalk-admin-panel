@@ -516,22 +516,43 @@ sequenceDiagram
     API-->>AdminFE: {generated: n, certificates: [...]}
 ```
 
-⚠️ **Finding for the reviewer — nothing in the database prevents a duplicate certificate.**
-`generateCertificatesForEvent` (`apps/backend/src/routes/admin/adminCertificates.service.ts`) de-duplicates
-by reading the event's existing certificates into an in-memory `Set` and skipping those `userId`s. That
-check is **application-level and non-atomic**, and the `Certificate` model has a unique constraint on
-`verificationCode` **only** — there is no `@@unique([userId, eventId])`. Two consequences:
+**Duplicate certificates — closed 2026-08-11** (migration
+`20260811140000_certificate_unique_per_user_event`).
 
-- Two concurrent admin bulk-issues for the same event, or a bulk-issue racing the participant's own lazy
-  first-download in the **other repo's backend**, can both pass the `Set` check and both insert. The
-  attendee ends up with two valid certificates carrying different verification codes.
-- The window is small and the impact is reputational rather than financial (there is no money in this
-  system — see Financial Risks), which is presumably why it has not bitten. But it is a real gap, it
-  spans two repos that no single test exercises together, and the fix is cheap: a
-  `@@unique([userId, eventId])` on `Certificate` plus catching the resulting `P2002` as "already issued".
+`generateCertificatesForEvent` (`apps/backend/src/routes/admin/adminCertificates.service.ts`)
+de-duplicates by reading the event's existing certificates into an in-memory `Set` and skipping those
+`userId`s, and bliblitalk-user-fe's `issueCertificateIfMissing` does a `findFirst` before its `create`.
+Both are check-then-insert, and because they run in **separate processes against one shared database**
+they raced each other as well as themselves: an attendee could end up with two valid certificates
+carrying different verification codes. `verificationCode`'s own uniqueness never caught this, since each
+insert mints a fresh code.
 
-This is recorded here rather than silently fixed because it is a schema change with a migration, outside
-the scope of regenerating a design document.
+`Certificate` now carries `@@unique([userId, eventId])`. The application checks remain as the fast path;
+both call sites treat the resulting `P2002` as "someone else already issued it" — admin counts it out of
+`generated` and returns 200, user-fe resolves to the winning row and still serves the PDF. The migration
+deletes pre-existing duplicates, keeping the earliest-issued row of each group, because PostgreSQL will
+not build a unique index over existing duplicates.
+
+**Owner clarification (2026-08-11), superseding the earlier re-issuance note:** a certificate is not
+something an admin issues at all. It becomes available on its own once three things have happened, in
+order — the participant is checked in, the event finishes, and feedback is submitted. There is no
+re-issue step, so one row per attendee per event is exactly right and the constraint above is not in
+tension with anything.
+
+The participant-facing chain that implements this lives in bliblitalk-user-fe
+(`routes/public/registrations/registrations.service.ts`): `certificateAvailable` in the My Events
+payload turns true when the attendee is `PRESENT`, the event is `COMPLETED` or `ARCHIVED`, and the event
+has certificates enabled; the download endpoint re-checks the same conditions plus feedback and creates
+the row on first request. The `isEventFinished` predicate is shared between the flag and the gate
+precisely so the UI cannot offer a button the API then refuses.
+
+⚠️ **Follow-up for the owner — the admin bulk-issue endpoint is now redundant.**
+`POST /api/admin/events/:id/certificates/generate` and the Certificates tab that calls it predate this
+flow. Nothing depends on an admin pressing it: an attendee who has cleared the three gates gets their
+certificate whether or not it was ever run. It is harmless (idempotent, and now unique-constrained), but
+it is a second way to do something that is supposed to be automatic, and it can create rows for people
+who have not submitted feedback. Retiring it, or reducing the tab to a read-only list, is a product
+decision that has not been taken.
 
 **Use case: Marketing email campaign (real SMTP integration)**
 
@@ -924,9 +945,14 @@ re-created; `REJECTED` is terminal).
 | issuedAt | DateTime | no, default now() | — | |
 | verificationCode | String | no | UNIQUE | |
 
-**Owner-confirmed:** the absence of a unique constraint on `(userId, eventId)` is **intentional** —
-re-issuance (a participant legitimately holding more than one certificate row for the same event, each
-with its own `verificationCode`) is a real, supported scenario, not an oversight.
+Constraint: `@@unique([userId, eventId])` — one certificate per person per event, added 2026-08-11.
+
+**Owner-confirmed (2026-08-08), superseded 2026-08-11:** the absence of a unique constraint on
+`(userId, eventId)` was originally recorded as **intentional**, to allow re-issuance — one participant
+holding more than one certificate row for the same event, each with its own `verificationCode`. The
+owner has since clarified that certificates are generated automatically from check-in → event finished →
+feedback, with no admin issue step and no re-issue. One row per attendee per event is therefore the
+intended model, and the constraint records it.
 
 **Table: `Feedback`** (`schema.prisma:257-279`)
 
