@@ -12,7 +12,7 @@ failures get a bounded diagnose→fix→re-run loop (max 3 attempts); an exhaust
 FAILED (…, NEEDS-HUMAN) and still blocks. Blocking rule: /vibe-check will not return READY at
 Medium/High while a High- or Medium-severity (sensitive/important) scenario is FAILED or STALE.
 
-Last generated: 2026-08-11 · Reconciled against commit `b38687a (dirty)` · Aligned to docs/DESIGN.md
+Last generated: 2026-08-11 · Reconciled against commit `d1e513a` · Aligned to docs/DESIGN.md
 (**with a caveat — see below**)
 
 > **⚠️ Prerequisite not met: `docs/DESIGN.md` is stale.** This skill's own chain requires a current
@@ -100,14 +100,22 @@ of those scenarios, and conflating them is what made the old count wrong:
   all**: identity arrives as the `X-User-Id` header. Those entries are kept with their last
   recorded result and a note; they are never deleted and they do not block this repo's gate.
 
-**Verification actually performed this run** (commit `02fa06a`, clean tree): `pnpm turbo run
+**Verification performed on the 2026-08-10 run** (commit `02fa06a`, clean tree): `pnpm turbo run
 typecheck lint` — 7/7 tasks, zero errors, 1 pre-existing `no-unused-vars` warning; `pnpm turbo run
 test` — 5/5 tasks, **184 tests passing, zero skipped, zero failed** (backend 20 files / 143 tests,
 frontend 6, `@repo/auth` 8, `@repo/shared-types` 6, `@repo/shared-utils` 21).
 
+**Verification performed on the 2026-08-11 run** (commit `d1e513a`): `pnpm turbo run typecheck lint`
+— 7/7 tasks, zero errors, the same 1 pre-existing `no-unused-vars` warning (`lifecycle/transitionEvent.test.ts`,
+untouched by this change); `pnpm turbo run test` — 5/5 tasks, backend **21 files / 146 tests**, and
+8 consecutive full backend runs green after the isolation fix.
+
 **High severity not PASSED — 0.** The two remaining PENDING scenarios (TS-008, TS-020) are both
-`important` → **Medium**, and PENDING is neither FAILED nor STALE, so neither blocks. No test failed
-this run, so the bounded High-severity fix loop was never entered.
+`important` → **Medium**, and PENDING is neither FAILED nor STALE, so neither blocks. **No scenario
+failed on either run, so the bounded High-severity fix loop was never entered.** The 2026-08-11
+suite failures described above were not scenario failures — neither `lifecycleBackfill.test.ts` nor
+`adminDashboard.routes.test.ts` is a named `Test-file` for any scenario — so no scenario status
+moved because of them. They were diagnosed and fixed on their own terms, not as a fix-loop pass.
 
 **Consequence for the go-live gate, stated plainly:** `test-scenario-complete` reads this file for
 FAILED or STALE important/sensitive scenarios. There are now **none** — it was failing on 4 STALE +
@@ -550,7 +558,7 @@ was already passing, and `review-proof-sealed`, `approvals-complete`, `backup-re
 - Last-verified-commit: (uncommitted — migration applied and asserted in-session against the local dev database; 136/136 backend + 6/6 frontend green)
 - Note (2026-08-06): removing VIEWER cost one piece of real coverage and that is recorded rather than papered over. VIEWER was the only Admin CMS role without `USER_MANAGE`, so `GET /api/admin/users` can no longer be denied to any admin tier and the old "rejects a viewer" assertion had no valid subject left. It was rewritten against `ROLE_MANAGE` (held only by SUPER_ADMIN), which is now the narrowest permission boundary in the matrix — a narrower boundary than before, not a weaker one. Five other denial tests simply moved to `hrta@gdn-commerce.com`, which genuinely lacks the permission each of them asserts.
 
-### TS-028 — The three event image fields survive the whole admin write path, and stay independent  [PASSED (2026-08-11, b38687a (dirty), agent)]
+### TS-028 — The three event image fields survive the whole admin write path, and stay independent  [PASSED (2026-08-11, d1e513a, agent)]
 - Feature / flow: event content — per-shape artwork (hero banner / card thumbnail / portrait poster)
 - Category: important
 - Verify: agent
@@ -563,7 +571,7 @@ was already passing, and `review-proof-sealed`, `approvals-complete`, `backup-re
 - Steps: `POST /api/admin/events` with all three image URLs; `PATCH` exactly one of them; `PATCH` one to `null`; `PATCH` an unrelated field with the image keys absent; `GET` the event back. Separately, call `toEventDTO` on a fixture with all three set and on one with only a banner
 - Expected: create returns all three distinct URLs; patching one leaves the other two untouched; an explicit `null` clears that field only; an absent key leaves the stored value alone (absent ≠ null); the `GET` reflects every write; and `toEventDTO` maps each field straight through, emitting `null` for a missing shape rather than substituting another shape's image
 - Covers: `apps/backend/src/db/prisma/schema.prisma` (`Event.bannerUrl`/`thumbnailUrl`/`posterUrl`), `apps/backend/src/db/prisma/migrations/20260811100000_event_poster_url/migration.sql`, `apps/backend/src/lib/shared/mappers.ts:43-52` (`toEventDTO`), `apps/backend/src/routes/admin/adminEvents.service.ts` (create/update field write-through), `packages/shared-types/src/schemas.ts` (`EventDTO.posterUrl`, `AdminEventInput.posterUrl`), `apps/frontend/src/pages/events/EventFormPage.tsx`, `apps/frontend/src/pages/events/workspace/OverviewTab.tsx`
-- Last-verified-commit: b38687a (dirty)
+- Last-verified-commit: d1e513a
 - Note (2026-08-11) — why this scenario exists at all: before this run **nothing in this dossier covered the event field-write path**. `adminEvents.service.ts`, `mappers.ts`, `schema.prisma`, `schemas.ts` and both admin event forms appeared in zero `Covers` lines; `adminEvents.routes.test.ts` was referenced only for lifecycle and RBAC scenarios. That is why adding `posterUrl` staled nothing — the freshness diff had nothing to intersect. The gap is the finding; the missing coverage was not a consequence of this change, it was already there. The scenario is deliberately asserted at two levels because the failure mode is silent: all three fields are optional and nullable, so a field dropped in the mapper or the service still typechecks and still returns `200`, and only ever surfaces as a missing picture on a page nobody is testing.
 - Note (2026-08-11) — the admin side of this only covers *storage*. The portal's choice of which field to render per slot (fallback `poster → thumbnail → banner`, `card → banner`, and `wide` deliberately falling back to nothing) lives in `bliblitalk-user-fe/apps/frontend/src/utils/eventImage.ts` and is covered by that repo's own dossier. Neither repo asserts the two ends together — same recorded shape of gap as TS-015.
 - Note (2026-08-11) — **this scenario's own test exposed a suite-isolation defect, now fixed.** Adding TS-028's integration case took the backend to 21 test files and raised the rate of a pre-existing intermittent failure until it was reproducible. Diagnosis, in order: `adminDashboard.routes.test.ts` failed `expected 500 to be 200` and would not reproduce (3 isolated runs, 9 paired runs, 8 full runs all green); after the 21st file landed, `lib/lifecycle/lifecycleBackfill.test.ts` began failing too, and its signature was self-explaining — it asserts invariants over the **whole** `Event` table, six other files create events with `prisma.event.create` bypassing the lifecycle service that writes history rows, and vitest ran every file in a parallel worker against one shared Postgres. Classification: **test-bug** (missing isolation), not a product bug — nothing in production bulk-creates half-built events beside a global consistency check. Fix: `apps/backend/vitest.config.ts` (new) sets `fileParallelism: false`. No assertion was narrowed, skipped or deleted; the alternative — scoping the invariant to ignore other files' rows — would have deleted the only whole-table consistency check in the repo. Verified by 8 consecutive full runs, 146/146. The dashboard 500 belongs to the same class but was never reproducible on demand, so it is recorded as *not recurring*, not as *proven fixed*.
@@ -605,9 +613,10 @@ was already passing, and `review-proof-sealed`, `approvals-complete`, `backup-re
 - 2026-08-10 · TS-001, TS-006, TS-007, TS-024 · → **NO LONGER IN DESIGN — MOVED** (kept for history). The participant-portal surface left this repo in the split; these flows are covered in `bliblitalk-user-fe`'s own dossier (its TS-013, TS-011, TS-010 respectively; TS-024's capacity edge case belongs to its `events.service.ts`). Previously they sat in this file as PASSED against files that no longer exist here — the count was wrong, not just stale.
 - 2026-08-10 · TS-010, TS-011, TS-012, TS-017 · → **NO LONGER IN DESIGN — DELETED** (kept for history). Formalises the 2026-08-06 note. The Apps Gateway migration (`79b6a7d`) deleted the mocked SSO providers, `JWT_SECRET` and `config.test.ts`, `seedConfig.ts`/`seedConfig.test.ts`, and `auth.service.ts` with its algorithm allowlist. This app implements no login at all; identity arrives as `X-User-Id`.
 - 2026-08-10 · dossier · **prerequisite recorded as unmet:** `docs/DESIGN.md` is still self-flagged stale (three banners), so this reconciliation was code-derived and no new scenarios were derived from design flows. Regenerate DESIGN.md and re-run this skill.
-- 2026-08-11 · dossier · reconciled against `b38687a (dirty)`. Freshness diff `02fa06a..b38687a` intersected **no** live scenario's `Covers` ∪ `Test-file`, so nothing flipped to STALE and nothing PASSED was re-run. The 17 existing PASSED entries keep their `02fa06a` / `8017db0` anchors.
-- 2026-08-11 · TS-028 · created and **PASSED** (agent, `b38687a (dirty)`) — the three per-shape event image fields round-trip through create → PATCH → `toEventDTO` → GET, and stay independent of one another. Backed by a new unit file (`lib/shared/mappers.test.ts`, 2 cases) and a new integration case in `routes/admin/adminEvents.routes.test.ts`. Verified by an actual run, not a re-stamp: `pnpm turbo run typecheck lint` 7/7 successful (1 pre-existing unused-import warning in `lifecycle/transitionEvent.test.ts`, untouched by this change), backend 21 files / 146 tests green.
+- 2026-08-11 · dossier · reconciled against `d1e513a`. Freshness diff `02fa06a..b38687a` intersected **no** live scenario's `Covers` ∪ `Test-file`, so nothing flipped to STALE and nothing PASSED was re-run. The 17 existing PASSED entries keep their `02fa06a` / `8017db0` anchors.
+- 2026-08-11 · TS-028 · created and **PASSED** (agent, `d1e513a`) — the three per-shape event image fields round-trip through create → PATCH → `toEventDTO` → GET, and stay independent of one another. Backed by a new unit file (`lib/shared/mappers.test.ts`, 2 cases) and a new integration case in `routes/admin/adminEvents.routes.test.ts`. Verified by an actual run, not a re-stamp: `pnpm turbo run typecheck lint` 7/7 successful (1 pre-existing unused-import warning in `lifecycle/transitionEvent.test.ts`, untouched by this change), backend 21 files / 146 tests green.
 - 2026-08-11 · dossier · **coverage gap recorded** (the reason TS-028 exists): no scenario covered the event field-write path — `adminEvents.service.ts`, `mappers.ts`, `schema.prisma`, `schemas.ts` and both admin event forms were in zero `Covers` lines. Pre-existing, not introduced by `b38687a`.
 - 2026-08-11 · suite · **isolation defect diagnosed and fixed (test-bug).** Root cause: 21 backend test files ran in parallel worker threads against one shared Postgres, while `lib/lifecycle/lifecycleBackfill.test.ts` asserts invariants over the entire `Event` table and six other files create events directly via `prisma.event.create`. The invariant test was failing correctly on other files' half-built rows; the intermittent `expected 500 to be 200` in `adminDashboard.routes.test.ts` is the same class. Fix: new `apps/backend/vitest.config.ts` with `fileParallelism: false`. No assertion weakened, skipped or deleted — narrowing the whole-table invariant was considered and rejected. Before: ~1 full run in 4 failed. After: 8 consecutive full runs, 146/146, ~26s each (was ~11s parallel). Full evidence in TS-028's note.
 - 2026-08-11 · dossier · **caveat on every full-suite-derived stamp in this file.** Because the suite was not isolated until today, any `PASSED (…, agent)` taken from a full-suite run was recorded under a runner that could fail without a code cause. No stamp was changed on that basis — the assertions themselves were never in doubt — but it is recorded so a reviewer reading an older anchor knows what the runner was doing at the time.
 - 2026-08-11 · dossier · prerequisite **still unmet**: `docs/DESIGN.md` remains stale (unchanged since the 2026-08-10 entry above). This reconciliation was again code-derived. The `design-document-complete` gate item fails on the same evidence.
+- 2026-08-11 · TS-028 + dossier · re-stamped from `b38687a (dirty)` to **`d1e513a`** — the same tree that passed, now committed with no edits in between. The freshness diff quoted above was computed against `b38687a`, which is `d1e513a`'s parent; the only changes between them are this run's own tests, config and dossier.
