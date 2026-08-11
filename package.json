@@ -12,7 +12,8 @@
     "db:up": "docker-compose up -d db",
     "db:generate": "pnpm --filter @repo/backend generate",
     "db:migrate": "pnpm --filter @repo/backend migrate",
-    "db:seed": "pnpm --filter @repo/backend seed"
+    "db:seed": "pnpm --filter @repo/backend seed",
+    "db:bootstrap-superadmin": "pnpm --filter @repo/backend bootstrap:superadmin"
   },
   "devDependencies": {
     "prettier": "^3.3.0",
