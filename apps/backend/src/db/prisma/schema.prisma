@@ -145,9 +145,16 @@ model Event {
   eventCode            String?
   title                String
   subtitle             String?
+  // Three images, one per shape the UI actually renders — not one image stretched into every
+  // slot. Each is optional and falls back down the list (poster → thumbnail → banner), so an
+  // admin who uploads only a banner still gets something everywhere, while an admin who cares
+  // about a particular surface can replace just that one.
+  //   banner    — wide hero strip (~1600×400): event detail hero, spotlight, admin workspace hero
   bannerUrl            String?
-  // Small poster/card image for list views; falls back to bannerUrl when unset.
+  //   thumbnail — landscape card (~800×500): every list/card/row surface in both apps
   thumbnailUrl         String?
+  //   poster    — portrait poster (~680×960): the tall poster column of a My Events row
+  posterUrl            String?
   description          String
   categoryId           String
   category             EventCategory  @relation(fields: [categoryId], references: [id])

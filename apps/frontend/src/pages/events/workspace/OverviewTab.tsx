@@ -48,6 +48,7 @@ interface FormState {
   capacity: string;
   bannerUrl: string;
   thumbnailUrl: string;
+  posterUrl: string;
   speakers: { id: string; name: string; avatarUrl: string | null }[];
 }
 
@@ -67,6 +68,7 @@ function fromEvent(e: EventDTO): FormState {
     capacity: String(e.capacity),
     bannerUrl: e.bannerUrl ?? "",
     thumbnailUrl: e.thumbnailUrl ?? "",
+    posterUrl: e.posterUrl ?? "",
     speakers: e.speakers.map((s) => ({ id: s.id, name: s.name, avatarUrl: s.avatarUrl })),
   };
 }
@@ -193,6 +195,7 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
         capacity: Number(form.capacity) || 0,
         bannerUrl: form.bannerUrl || null,
         thumbnailUrl: form.thumbnailUrl || null,
+        posterUrl: form.posterUrl || null,
         speakerIds: form.speakers.map((s) => s.id),
       };
       await api.patch<EventDTO>(`/admin/events/${event.id}`, payload);
@@ -314,9 +317,12 @@ export function OverviewTab({ event, onSaved }: { event: EventDTO; onSaved: () =
               </div>
               <p className="mt-1 text-xs text-muted">Manage the full speaker directory on the Speakers page.</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <ImageUploadField label="Hero Banner" value={form.bannerUrl} onChange={(url) => set("bannerUrl", url)} recommendedWidth={1280} recommendedHeight={720} helpText="Shown on the event detail hero and in event cards." />
-              <ImageUploadField label="Thumbnail" value={form.thumbnailUrl} onChange={(url) => set("thumbnailUrl", url)} recommendedWidth={800} recommendedHeight={600} helpText="Small image for event lists/cards. Falls back to the hero banner when unset." />
+            {/* Keep these three in step with the create form (EventFormPage) — same labels, same
+                recommended sizes. They are the same three fields reached from a different tab. */}
+            <div className="grid grid-cols-3 gap-4">
+              <ImageUploadField label="Hero Banner (wide)" value={form.bannerUrl} onChange={(url) => set("bannerUrl", url)} recommendedWidth={1600} recommendedHeight={400} helpText="Wide strip across the top of the event detail page, the landing-page spotlight, and the admin workspace header." />
+              <ImageUploadField label="Thumbnail (card)" value={form.thumbnailUrl} onChange={(url) => set("thumbnailUrl", url)} recommendedWidth={800} recommendedHeight={500} helpText="Every card and list row — landing page, dashboard, past events, the admin event list. Falls back to the hero banner." />
+              <ImageUploadField label="Poster (portrait)" value={form.posterUrl} onChange={(url) => set("posterUrl", url)} recommendedWidth={640} recommendedHeight={960} helpText="Tall poster beside each row on the participant's My Events page. Falls back to the thumbnail, then the hero banner." />
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-muted">Description</label>

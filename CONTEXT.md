@@ -164,6 +164,15 @@ specced and planned under `docs/superpowers/`):
   because `/api/uploads/**` is unauthenticated static serving that the portal uses as `<img src>` and
   would otherwise start redirecting to the login UI. See `PROJECT.md` "Login Method" for the exact
   registration values to hand over.
+- **Event artwork is three images, one per rendered shape** (owner decision 2026-08-11, migration
+  `20260811100000_event_poster_url`). `Event.posterUrl` joins `bannerUrl`/`thumbnailUrl` because the
+  portal renders three genuinely different ratios — a ~4:1 hero strip, a ~16:10 card, and the
+  portrait poster column of a My Events row. The upload fields in both entry points (the create form
+  and the workspace Overview tab) carry the real rendered sizes (1600×400, 800×500, 640×960), so
+  `ImageUploadField`'s existing crop check measures against what the portal actually shows instead of
+  the old 1280×720 / 800×600 guesses. Grouped by shape (3), not by slot (8) — five slots share the
+  card shape. Keep the two forms' labels, sizes and help text identical; the portal's
+  `eventImage()` fallback chain is written to match that help text word for word.
 
 ## Current State
 

@@ -49,6 +49,7 @@ export function toEventDTO(e: EventWithRelations): EventDTO {
     subtitle: e.subtitle,
     bannerUrl: e.bannerUrl,
     thumbnailUrl: e.thumbnailUrl,
+    posterUrl: e.posterUrl,
     description: e.description,
     category: e.category.name,
     categoryId: e.categoryId,

@@ -225,8 +225,12 @@ export const EventDTO = z.object({
   eventCode: z.string().nullable(),
   title: z.string(),
   subtitle: z.string().nullable(),
+  // One image per shape the UI renders — wide hero, landscape card, portrait poster.
+  // Consumers must resolve them through the poster → thumbnail → banner fallback rather
+  // than reading a single field, so a partially-filled event still renders everywhere.
   bannerUrl: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
+  posterUrl: z.string().nullable(),
   description: z.string(),
   category: z.string(),
   categoryId: z.string(),
@@ -460,6 +464,7 @@ export const AdminEventInput = z.object({
   eventCode: z.string().optional().nullable(),
   bannerUrl: z.string().optional().nullable(),
   thumbnailUrl: z.string().optional().nullable(),
+  posterUrl: z.string().optional().nullable(),
   description: z.string().min(1, "Description is required"),
   categoryId: z.string().min(1, "Category is required"),
   tags: z.array(z.string()).optional().default([]),

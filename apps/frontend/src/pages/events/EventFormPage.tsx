@@ -26,6 +26,7 @@ interface FormState {
   description: string;
   bannerUrl: string;
   thumbnailUrl: string;
+  posterUrl: string;
   speakers: { id: string; name: string; avatarUrl: string | null }[];
   startsAt: string;
   endsAt: string;
@@ -50,6 +51,7 @@ const EMPTY: FormState = {
   description: "",
   bannerUrl: "",
   thumbnailUrl: "",
+  posterUrl: "",
   speakers: [],
   startsAt: "",
   endsAt: "",
@@ -151,6 +153,7 @@ export function EventFormPage() {
         description: form.description,
         bannerUrl: form.bannerUrl || null,
         thumbnailUrl: form.thumbnailUrl || null,
+        posterUrl: form.posterUrl || null,
         speakerIds: form.speakers.map((s) => s.id),
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
@@ -247,22 +250,34 @@ export function EventFormPage() {
               <label className="mb-1 block text-xs font-semibold text-muted">Description</label>
               <textarea required value={form.description} onChange={(e) => set("description", e.target.value)} className={TEXTAREA_CLASS} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            {/* One field per shape the portal actually renders. Sizes are the real rendered
+                ratios, not round numbers — ImageUploadField measures the upload against them and
+                reports how much would be cropped, so a wrong ratio is caught here, not in
+                production. Each is optional; the portal falls back poster → thumbnail → banner. */}
+            <div className="grid grid-cols-3 gap-4">
               <ImageUploadField
-                label="Hero Banner"
+                label="Hero Banner (wide)"
                 value={form.bannerUrl}
                 onChange={(url) => set("bannerUrl", url)}
-                recommendedWidth={1280}
-                recommendedHeight={720}
-                helpText="Shown on the event detail hero and in event cards."
+                recommendedWidth={1600}
+                recommendedHeight={400}
+                helpText="Wide strip across the top of the event detail page, the landing-page spotlight, and the admin workspace header."
               />
               <ImageUploadField
-                label="Thumbnail"
+                label="Thumbnail (card)"
                 value={form.thumbnailUrl}
                 onChange={(url) => set("thumbnailUrl", url)}
                 recommendedWidth={800}
-                recommendedHeight={600}
-                helpText="Small image for event lists/cards. Falls back to the hero banner when unset."
+                recommendedHeight={500}
+                helpText="Every card and list row — landing page, dashboard, past events, this admin list. Falls back to the hero banner."
+              />
+              <ImageUploadField
+                label="Poster (portrait)"
+                value={form.posterUrl}
+                onChange={(url) => set("posterUrl", url)}
+                recommendedWidth={640}
+                recommendedHeight={960}
+                helpText="Tall poster beside each row on the participant's My Events page. Falls back to the thumbnail, then the hero banner."
               />
             </div>
             <div>
