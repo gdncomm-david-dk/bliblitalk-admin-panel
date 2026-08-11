@@ -7,8 +7,10 @@ const TEST_SLUG = "admin-certificates-test-event";
 const TEST_EMAIL = "admin-certificates-test@example.com";
 let eventId: string;
 let presentUserId: string;
+let registrationId: string;
 
 async function purge() {
+  await prisma.feedback.deleteMany({ where: { event: { slug: TEST_SLUG } } });
   await prisma.certificate.deleteMany({ where: { event: { slug: TEST_SLUG } } });
   await prisma.registration.deleteMany({ where: { event: { slug: TEST_SLUG } } });
   await prisma.event.deleteMany({ where: { slug: TEST_SLUG } });
@@ -40,9 +42,10 @@ describe("admin certificates", () => {
       data: { email: TEST_EMAIL, name: "Cert Test User" },
     });
     presentUserId = user.id;
-    await prisma.registration.create({
+    const registration = await prisma.registration.create({
       data: { userId: presentUserId, eventId, status: "REGISTERED", attendance: "PRESENT" },
     });
+    registrationId = registration.id;
   });
 
   afterAll(purge);
@@ -119,6 +122,50 @@ describe("admin certificates", () => {
     // ...and `generated` counts rows actually inserted, so the two sum to the single row written.
     expect(a.body.generated + b.body.generated).toBe(1);
     expect(await prisma.certificate.count({ where: { eventId } })).toBe(1);
+  });
+
+  // Bulk issue used to check only attendance and the certificate toggle, while the participant's
+  // own path in bliblitalk-user-fe also required the event to have finished and feedback to be
+  // in. That made this endpoint a looser second route to the same row. These two hold the two
+  // paths to the same rule.
+  it("refuses to generate certificates while the event is still running", async () => {
+    await prisma.event.update({ where: { id: eventId }, data: { status: "ONGOING" } });
+    const agent = loginAs("superadmin@gdn-commerce.com");
+
+    const res = await agent.post(`/api/admin/events/${eventId}/certificates/generate`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("EVENT_NOT_FINISHED");
+    expect(await prisma.certificate.count({ where: { eventId } })).toBe(0);
+  });
+
+  it("skips an attendee who owes feedback on an event that collects it", async () => {
+    await prisma.event.update({ where: { id: eventId }, data: { enableFeedback: true } });
+    const agent = loginAs("superadmin@gdn-commerce.com");
+
+    const before = await agent.post(`/api/admin/events/${eventId}/certificates/generate`);
+    expect(before.status).toBe(200);
+    expect(before.body.generated).toBe(0);
+
+    await prisma.feedback.create({
+      data: {
+        registrationId,
+        userId: presentUserId,
+        eventId,
+        overallRating: 9,
+        topicRating: 9,
+        qnaRating: 8,
+        contentRating: 9,
+        speakerRating: 10,
+        venueRating: 8,
+        timingRating: 8,
+        npsScore: 9,
+      },
+    });
+
+    const after = await agent.post(`/api/admin/events/${eventId}/certificates/generate`);
+    expect(after.status).toBe(200);
+    expect(after.body.generated).toBe(1);
   });
 
   it("refuses to generate certificates when the event has them disabled", async () => {

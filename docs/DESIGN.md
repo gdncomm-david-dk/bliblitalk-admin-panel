@@ -546,13 +546,16 @@ has certificates enabled; the download endpoint re-checks the same conditions pl
 the row on first request. The `isEventFinished` predicate is shared between the flag and the gate
 precisely so the UI cannot offer a button the API then refuses.
 
-⚠️ **Follow-up for the owner — the admin bulk-issue endpoint is now redundant.**
-`POST /api/admin/events/:id/certificates/generate` and the Certificates tab that calls it predate this
-flow. Nothing depends on an admin pressing it: an attendee who has cleared the three gates gets their
-certificate whether or not it was ever run. It is harmless (idempotent, and now unique-constrained), but
-it is a second way to do something that is supposed to be automatic, and it can create rows for people
-who have not submitted feedback. Retiring it, or reducing the tab to a read-only list, is a product
-decision that has not been taken.
+`POST /api/admin/events/:id/certificates/generate` applies the same three gates as of 2026-08-11. It
+previously checked only `enableCertificate` and attendance, which made it a looser second route to the
+same row: it could issue for an event still in progress, and for attendees who had not given feedback —
+the very condition the participant-facing path enforces. It now refuses with 400 `EVENT_NOT_FINISHED`
+before the event completes, and skips attendees who owe feedback on an event that collects it.
+
+**Follow-up for the owner (not urgent, no longer a hole):** with the gates aligned, the endpoint is
+redundant rather than risky — an attendee who has cleared the three gates gets their certificate whether
+or not an admin ever presses it, and the unique constraint makes pressing it harmless. Retiring it, or
+reducing the Certificates tab to a read-only list, is a product decision that has not been taken.
 
 **Use case: Marketing email campaign (real SMTP integration)**
 

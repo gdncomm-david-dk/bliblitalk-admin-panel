@@ -1,5 +1,5 @@
 import { Prisma, type Certificate, type User } from "@prisma/client";
-import { Attendance, RegistrationStatus } from "@repo/shared-types";
+import { Attendance, RegistrationStatus, isEventFinished } from "@repo/shared-types";
 import type { AdminCertificateDTO, GenerateCertificatesResult } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
@@ -36,6 +36,14 @@ export async function generateCertificatesForEvent(
   if (!event.enableCertificate) {
     throw new AppError("CERTIFICATES_DISABLED", "Certificates are disabled for this event", 400);
   }
+  // Same three gates the participant's own certificate goes through in bliblitalk-user-fe —
+  // checked in, event finished, feedback submitted. They used not to be applied here, so this
+  // button was a looser second route to the same row: it could issue for an event still in
+  // progress, and for attendees who had not given feedback. Two paths to one artefact must not
+  // disagree about who has earned it.
+  if (!isEventFinished(event.status)) {
+    throw new AppError("EVENT_NOT_FINISHED", "The event has not finished yet", 400);
+  }
 
   const [attendees, existing] = await Promise.all([
     prisma.registration.findMany({
@@ -43,6 +51,9 @@ export async function generateCertificatesForEvent(
         eventId,
         attendance: Attendance.PRESENT,
         status: { notIn: [RegistrationStatus.CANCELLED, RegistrationStatus.REJECTED] },
+        // Only when the event actually collects feedback — mirrors the download gate, which
+        // skips this condition entirely on an event with feedback switched off.
+        ...(event.enableFeedback ? { feedback: { isNot: null } } : {}),
       },
       select: { userId: true },
     }),

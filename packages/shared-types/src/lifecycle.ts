@@ -36,6 +36,26 @@ export function canTransition(from: EventStatus, to: EventStatus): boolean {
 }
 
 /**
+ * Whether an event has finished, in the sense that certificates may be issued for it.
+ *
+ * Lives here, in the mirrored package, because three call sites in two repos must agree on
+ * it: bliblitalk-user-fe gates the certificate download on it and derives the My Events
+ * `certificateAvailable` flag from it, and bliblitalk-admin's bulk issue refuses to run before
+ * it. They previously disagreed — attendance alone was treated as enough — which let a
+ * certificate be issued for an event that had not happened yet. A local copy per repo is
+ * exactly how that drift returns.
+ *
+ * ARCHIVED counts: per ALLOWED_TRANSITIONS it is only reachable from COMPLETED or CANCELLED,
+ * and filing a finished event away must not revoke the certificates its attendees earned.
+ * CANCELLED does not count — the event never ran, so there is nothing to certify. ONGOING does
+ * not either, even past its end time: the scheduler moves it to COMPLETED, and stored status is
+ * the authority rather than a clock comparison.
+ */
+export function isEventFinished(status: EventStatus): boolean {
+  return status === EventStatus.COMPLETED || status === EventStatus.ARCHIVED;
+}
+
+/**
  * Display-only hint for the FE: the next time-based transition the scheduler
  * will make and when. Computed from timestamps for the FE countdown; it never
  * drives the badge (the badge mirrors stored status + isOverdue). Lives next to
