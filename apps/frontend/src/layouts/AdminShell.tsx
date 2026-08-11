@@ -1,17 +1,14 @@
 import { useState, type ReactElement } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { can, Permission } from "@repo/auth";
 import type { Role } from "@repo/shared-types";
 import { useAuthStore } from "../store/authStore";
 import { cn } from "../utils/cn";
 import { BrandLogo } from "../components/BrandLogo";
 import {
-  AwardIcon,
   BarChartIcon,
   BellIcon,
-  FilterIcon,
   GridIcon,
-  HeartIcon,
   HomeIcon,
   MailIcon,
   MicIcon,
@@ -19,9 +16,9 @@ import {
   SettingsIcon,
   ShieldIcon,
   SidebarIcon,
-  StarIcon,
   UsersIcon,
 } from "../components/icons";
+import { visibleSettingsTabs } from "../pages/settings/SiteSettingsPage";
 import { UserMenu } from "../components/UserMenu";
 import { ToastContainer } from "../components/Toast";
 
@@ -32,6 +29,12 @@ interface NavLeaf {
   label: string;
   icon: (p: { width?: number; height?: number; className?: string }) => ReactElement;
   permission?: Permission;
+  /**
+   * Overrides `permission` when one entry is not gated by a single permission. Settings needs
+   * this: it is a tabbed page whose tabs each carry their own permission, so it must appear for
+   * anyone who can see at least one tab -- not only for holders of SETTINGS_MANAGE.
+   */
+  visible?: (role: Role) => boolean;
 }
 
 interface NavGroup {
@@ -45,21 +48,27 @@ const NAV: NavGroup[] = [
       { to: "/", label: "Dashboard", icon: HomeIcon },
       { to: "/events", label: "Event Management", icon: GridIcon, permission: Permission.EVENT_READ },
       { to: "/speakers", label: "Speakers", icon: MicIcon, permission: Permission.EVENT_UPDATE },
-      { to: "/categories", label: "Categories", icon: FilterIcon, permission: Permission.EVENT_UPDATE },
-      { to: "/speed-dating-settings", label: "Speed Dating", icon: HeartIcon, permission: Permission.SPEEDDATING_MANAGE },
-      { to: "/feedback-settings", label: "Reviews & Feedback", icon: StarIcon, permission: Permission.EVENT_READ },
-      { to: "/certificate-settings", label: "Certificates", icon: AwardIcon, permission: Permission.CERTIFICATE_MANAGE },
       { to: "/registrants", label: "User Management", icon: UsersIcon, permission: Permission.USER_MANAGE },
       { to: "/roles", label: "Role", icon: ShieldIcon, permission: Permission.ROLE_MANAGE },
       { to: "/marketing", label: "Marketing Email", icon: MailIcon, permission: Permission.MARKETING_MANAGE },
       { to: "/analytics", label: "Reports", icon: BarChartIcon, permission: Permission.ANALYTICS_READ },
-      { to: "/settings", label: "Settings", icon: SettingsIcon, permission: Permission.SETTINGS_MANAGE },
+      {
+        to: "/settings",
+        label: "Settings",
+        icon: SettingsIcon,
+        visible: (role) => visibleSettingsTabs(role).length > 0,
+      },
     ],
   },
 ];
 
+function isVisible(item: NavLeaf, role: Role): boolean {
+  if (item.visible) return item.visible(role);
+  return !item.permission || can(role, item.permission);
+}
+
 function visibleGroups(role: Role): NavGroup[] {
-  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || can(role, i.permission)) })).filter(
+  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => isVisible(i, role)) })).filter(
     (g) => g.items.length > 0,
   );
 }
@@ -73,16 +82,10 @@ function isActive(pathname: string, search: string, to: string): boolean {
 export function AdminShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
 
   if (!user) return null;
-
-  async function handleLogout() {
-    await logout();
-    navigate("/login", { replace: true });
-  }
 
   function toggleCollapsed() {
     setCollapsed((c) => {
@@ -158,7 +161,7 @@ export function AdminShell() {
           ))}
         </nav>
         <div className="border-t border-line p-3">
-          <UserMenu user={user} onLogout={handleLogout} variant="sidebar" collapsed={collapsed} />
+          <UserMenu user={user} onLogout={logout} variant="sidebar" collapsed={collapsed} />
         </div>
       </aside>
 
@@ -184,7 +187,7 @@ export function AdminShell() {
             >
               <BellIcon width={18} height={18} />
             </button>
-            <UserMenu user={user} onLogout={handleLogout} />
+            <UserMenu user={user} onLogout={logout} />
           </div>
         </header>
         <main className="flex-1 p-6">

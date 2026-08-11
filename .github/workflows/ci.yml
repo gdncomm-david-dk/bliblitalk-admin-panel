@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: blibli
+          POSTGRES_PASSWORD: blibli
+          POSTGRES_DB: blibli_talk_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blibli -d blibli_talk_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://blibli:blibli@localhost:5432/blibli_talk_ci?schema=public
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @repo/backend generate
+
+      - name: Apply migrations
+        run: pnpm --filter @repo/backend migrate:deploy
+
+      - name: Seed database
+        run: pnpm --filter @repo/backend seed
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test

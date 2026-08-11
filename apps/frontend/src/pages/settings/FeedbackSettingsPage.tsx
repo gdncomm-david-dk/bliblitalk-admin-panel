@@ -43,7 +43,6 @@ export function FeedbackSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink">Reviews & Feedback Settings</h1>
       <p className="mt-1 text-sm text-muted">
         Edit the question text shown on the portal's post-event feedback form, or turn a question off
         entirely. Per-event feedback results live in that event's workspace (Event Management → open an

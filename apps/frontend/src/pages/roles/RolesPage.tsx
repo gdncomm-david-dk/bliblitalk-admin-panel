@@ -9,8 +9,8 @@ import { FIELD_CLASS } from "../events/workspace/fieldStyles";
 const PAGE_SIZE = 20;
 
 // validate.ts's 422s carry zod's flattened field errors in `details`; surface the
-// first one instead of the generic "Invalid request" so a bad email/name/password
-// doesn't leave the Super Admin guessing which field is wrong.
+// first one instead of the generic "Invalid request" so a bad email or name doesn't
+// leave the Super Admin guessing which field is wrong.
 function describeAddAdminError(err: unknown): string {
   if (!(err instanceof ApiRequestError)) return "Failed to add admin.";
   const fieldErrors = (err.apiError.details as { fieldErrors?: Record<string, string[]> } | undefined)?.fieldErrors;
@@ -22,7 +22,6 @@ const ROLE_LABELS: Record<Role, string> = {
   [Role.SUPER_ADMIN]: "Super Admin",
   [Role.EVENT_ADMIN]: "Event Admin",
   [Role.HR_TA]: "Talent Acquisition",
-  [Role.VIEWER]: "Viewer",
   [Role.PARTICIPANT]: "Participant",
 };
 
@@ -37,8 +36,8 @@ export function RolesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<Role>(Role.VIEWER);
+  // Least-privileged Admin CMS tier, so an accidental Enter on the form grants the least.
+  const [newRole, setNewRole] = useState<Role>(Role.HR_TA);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -59,11 +58,12 @@ export function RolesPage() {
     setAddError(null);
     setAdding(true);
     try {
-      await api.post("/admin/users", { name: newName.trim(), email: newEmail.trim(), password: newPassword, role: newRole });
+      // No credential to set: the person signs in with their company account at Apps
+      // Gateway, and this only records which Admin CMS role that email carries.
+      await api.post("/admin/users", { name: newName.trim(), email: newEmail.trim(), role: newRole });
       setNewName("");
       setNewEmail("");
-      setNewPassword("");
-      setNewRole(Role.VIEWER);
+      setNewRole(Role.HR_TA);
       setShowAddForm(false);
       setQuery("");
       setPage(1);
@@ -96,7 +96,7 @@ export function RolesPage() {
         <div>
           <h1 className="text-xl font-bold text-ink">Role</h1>
           <p className="mt-1 text-sm text-muted">
-            Assign Admin CMS access — Super Admin, Event Admin, Talent Acquisition, or Viewer. Only Super Admins can
+            Assign Admin CMS access — Super Admin, Event Admin, or Talent Acquisition. Only Super Admins can
             make changes here.
           </p>
         </div>
@@ -131,14 +131,6 @@ export function RolesPage() {
               autoComplete="off"
               className={FIELD_CLASS}
             />
-            <input
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              type="password"
-              placeholder="Password (min. 8 characters)"
-              autoComplete="new-password"
-              className={FIELD_CLASS}
-            />
             <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)} className={FIELD_CLASS}>
               {ADMIN_ROLES.map((role) => (
                 <option key={role} value={role}>
@@ -157,7 +149,7 @@ export function RolesPage() {
             </button>
             <button
               onClick={onAddAdmin}
-              disabled={adding || !newName.trim() || !newEmail.trim() || newPassword.length < 8}
+              disabled={adding || !newName.trim() || !newEmail.trim()}
               className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
             >
               {adding ? "Adding…" : "Add Admin"}

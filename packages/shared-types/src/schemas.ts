@@ -10,41 +10,69 @@ import {
 } from "./enums";
 
 // ---- Auth ----
-export const LoginInput = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-export type LoginInput = z.infer<typeof LoginInput>;
+// Neither app has a login endpoint any more, so there is no login input to describe:
+// bliblitalk-admin sits behind Apps Gateway and reads the X-User-Id header (2026-08-06),
+// and bliblitalk-user-fe authenticates participants by emailed one-time code (2026-08-04).
+// LoginInput (email + password) and MicrosoftAuthInput (the mocked Entra ID sign-in) were
+// deleted with the handlers that consumed them.
 
-// Mock Google sign-in. In production the client sends a verified OAuth token;
-// the mock passes the identity the provider would have returned.
-export const GoogleAuthInput = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-});
-export type GoogleAuthInput = z.infer<typeof GoogleAuthInput>;
-
-// Mock Microsoft Entra ID (Azure AD) sign-in — Admin CMS SSO. Same shape as the
-// Google mock; a real integration verifies the token and reads these same claims.
-export const MicrosoftAuthInput = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-});
-export type MicrosoftAuthInput = z.infer<typeof MicrosoftAuthInput>;
-
-// Self-registration for participants. Email registrations set a password; Google
-// registrations omit it (identity is federated).
+// Self-registration for participants. No password: since the 2026-08 change,
+// bliblitalk-user-fe authenticates participants purely by emailed one-time code, so
+// registration collects the profile and then issues the first OTP. Submitting this
+// creates nothing — the profile comes back in the registration token below and the
+// account is created only once the code is verified.
 export const RegisterInput = z.object({
   fullName: z.string().min(1, "Full name is required"),
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters").optional(),
-  provider: z.enum(["email", "google"]).optional().default("email"),
   phone: z.string().min(1, "Phone number is required"),
   institution: z.string().optional().nullable(),
   role: z.string().optional().nullable(),
   yearsOfExperience: z.string().optional().nullable(),
 });
 export type RegisterInput = z.infer<typeof RegisterInput>;
+
+// Email one-time-code login (bliblitalk-user-fe). Requesting a code invalidates any
+// prior unconsumed one; verifying it issues the session.
+export const OtpRequestInput = z.object({
+  email: z.string().email(),
+});
+export type OtpRequestInput = z.infer<typeof OtpRequestInput>;
+
+export const OtpVerifyInput = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type OtpVerifyInput = z.infer<typeof OtpVerifyInput>;
+
+// Second half of registration. registrationToken is the signed, short-lived token
+// /auth/register handed back; it carries the profile the applicant typed, which is
+// why none of it has to be stored server-side while the code is outstanding. The
+// account is created when this succeeds — never before.
+export const RegisterVerifyInput = z.object({
+  registrationToken: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type RegisterVerifyInput = z.infer<typeof RegisterVerifyInput>;
+
+// Re-send the registration code. Returns a fresh token, since it points at a new
+// challenge — the caller must replace the one it holds.
+export const RegisterResendInput = z.object({
+  registrationToken: z.string().min(1),
+});
+export type RegisterResendInput = z.infer<typeof RegisterResendInput>;
+
+// A participant editing their own profile (bliblitalk-user-fe Account Settings). Field names
+// mirror RegisterInput so the same values keep the same names in both directions; `role` is the
+// applicant's job title, stored on User.position (User.role is the RBAC role and is not editable
+// here). Email is deliberately absent: it is the sign-in identifier, so changing it needs an
+// ownership proof (a code to the new address), not a profile save.
+export const UpdateProfileInput = z.object({
+  fullName: z.string().min(1, "Full name is required"),
+  institution: z.string().optional().nullable(),
+  role: z.string().optional().nullable(),
+  yearsOfExperience: z.string().optional().nullable(),
+});
+export type UpdateProfileInput = z.infer<typeof UpdateProfileInput>;
 
 // ---- Core DTOs (API response contracts) ----
 export const UserDTO = z.object({
@@ -197,8 +225,12 @@ export const EventDTO = z.object({
   eventCode: z.string().nullable(),
   title: z.string(),
   subtitle: z.string().nullable(),
+  // One image per shape the UI renders — wide hero, landscape card, portrait poster.
+  // Consumers must resolve them through the poster → thumbnail → banner fallback rather
+  // than reading a single field, so a partially-filled event still renders everywhere.
   bannerUrl: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
+  posterUrl: z.string().nullable(),
   description: z.string(),
   category: z.string(),
   categoryId: z.string(),
@@ -282,6 +314,55 @@ export const DEFAULT_PORTAL_LOGIN_CAROUSEL_SETTINGS: LoginCarouselSettingsDTO = 
   ],
 };
 
+/**
+ * One testimonial card on the public landing page.
+ *
+ * The avatar initials are deliberately NOT a field: they are derived from `name` when the card
+ * renders, so an admin cannot leave them stale after renaming someone, and there is one less
+ * box to fill in for every entry.
+ */
+export const TestimonialDTO = z.object({
+  quote: z.string().min(1),
+  name: z.string().min(1),
+  /** Free text under the name, e.g. "Associate PM · Joined 2024". Optional — some have none. */
+  meta: z.string(),
+});
+export type TestimonialDTO = z.infer<typeof TestimonialDTO>;
+
+/**
+ * The landing page's testimonial list. An array with no fixed length: adding, removing and
+ * reordering entries is a settings edit, never a schema change — which is the whole reason this
+ * lives in ModuleSettings' JSON rather than in its own table.
+ */
+export const TestimonialsSettingsDTO = z.object({
+  items: z.array(TestimonialDTO),
+});
+export type TestimonialsSettingsDTO = z.infer<typeof TestimonialsSettingsDTO>;
+
+/** Seeded from the copy the landing page shipped with, so the page looks unchanged until edited. */
+export const DEFAULT_TESTIMONIALS_SETTINGS: TestimonialsSettingsDTO = {
+  items: [
+    {
+      quote:
+        "I asked a question at a free talk, joined the mentor circle, and three months later I had my first PM offer. Unbelievable community.",
+      name: "Fajar Ramadhan",
+      meta: "Associate PM · Joined 2024",
+    },
+    {
+      quote:
+        "The hackathon brief went straight into my portfolio. Two interviews brought it up before I could. Genuinely practical education.",
+      name: "Tania Saputri",
+      meta: "UI/UX Student · Joined 2025",
+    },
+    {
+      quote:
+        "Rp 99.000 a month is a steal for the replay library. It's become my commute podcast now, instead of scrolling randomly.",
+      name: "Robby Valeri",
+      meta: "Frontend Engineer · Joined 2023",
+    },
+  ],
+};
+
 export const CertificateDTO = z.object({
   id: z.string(),
   eventTitle: z.string(),
@@ -311,6 +392,10 @@ export const DashboardDTO = z.object({
   recommended: z.array(EventDTO),
   nextEvent: NextEventDTO.nullable(),
   upcomingEvents: z.array(EventDTO),
+  // Events that have actually finished (status COMPLETED), newest first. Kept separate from
+  // upcomingEvents because the portal's "Learn more from past events" grid used to fall back
+  // to the upcoming list, which showed events that had not happened yet.
+  pastEvents: z.array(EventDTO),
 });
 export type DashboardDTO = z.infer<typeof DashboardDTO>;
 
@@ -379,6 +464,7 @@ export const AdminEventInput = z.object({
   eventCode: z.string().optional().nullable(),
   bannerUrl: z.string().optional().nullable(),
   thumbnailUrl: z.string().optional().nullable(),
+  posterUrl: z.string().optional().nullable(),
   description: z.string().min(1, "Description is required"),
   categoryId: z.string().min(1, "Category is required"),
   tags: z.array(z.string()).optional().default([]),
@@ -607,6 +693,27 @@ export const EventListQuery = z.object({
 });
 export type EventListQuery = z.infer<typeof EventListQuery>;
 
+// Which slice of the speaker roster the portal is asking for. Case-insensitive, and the two
+// values answer genuinely different questions rather than being a limit knob:
+//   featured (default) -> the curated strip: speakers an admin flagged, falling back to the
+//                         whole roster only so the strip is never empty
+//   all                -> the full directory behind "Show full speaker list", where a featured
+//                         filter would be actively wrong — a list that calls itself complete
+//                         must not silently hide the speakers nobody has flagged yet
+export const SpeakerScope = {
+  FEATURED: "featured",
+  ALL: "all",
+} as const;
+export type SpeakerScope = (typeof SpeakerScope)[keyof typeof SpeakerScope];
+
+export const SpeakerListQuery = z.object({
+  scope: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() : v),
+    z.nativeEnum(SpeakerScope).optional(),
+  ),
+});
+export type SpeakerListQuery = z.infer<typeof SpeakerListQuery>;
+
 // ---- Module settings (admin-configurable, singleton-per-key JSON blobs) ----
 export const SpeedDatingSettingsDTO = z.object({
   roundDurationMinutes: z.number().int().min(1).max(120),
@@ -726,13 +833,17 @@ export const UpdateUserEmploymentTypeInput = z.object({
 });
 export type UpdateUserEmploymentTypeInput = z.infer<typeof UpdateUserEmploymentTypeInput>;
 
-// Provisions a new Admin CMS staff account directly (no self-registration path for
-// staff — see auth.routes.ts /microsoft). Caller must hold Permission.ROLE_MANAGE;
-// the service additionally restricts `role` to ADMIN_ROLES (no provisioning PARTICIPANT).
+// Grants an Admin CMS role to a staff member (no self-registration path for staff).
+// Caller must hold Permission.ROLE_MANAGE; the service additionally restricts `role` to
+// ADMIN_ROLES (no provisioning PARTICIPANT).
+//
+// No password since the 2026-08-06 Apps Gateway migration: the person signs in through the
+// gateway with their company account, and this row exists only to attach an app-level role
+// to their email. Whether they may reach the app at all is the gateway's WHITELIST, which
+// is managed at /auth/ui/apps and not by this endpoint.
 export const CreateAdminUserInput = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
   // Can't reference @repo/auth's ADMIN_ROLES here (auth depends on shared-types, so
   // that import would be circular) — excluding PARTICIPANT is the schema-level
   // equivalent, so a future refactor can't accidentally drop the guard entirely by

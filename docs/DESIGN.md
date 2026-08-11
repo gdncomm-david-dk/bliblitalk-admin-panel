@@ -4,6 +4,48 @@
 > the codebase and the docs in this repo, then completed by the project owner. Companion to `PROJECT.md`
 > (go-live dossier, now completed for this repo) and `docs/ARCHITECTURE.md` (as-built architecture, still
 > not written) — see §0 below for how this document was produced.
+>
+> **⚠️ STALE as of 2026-08-02 — written before the repo-split (Phases 0–5, this repo's own
+> `CONTEXT.md`).** Every mention of `/api/public/*` or `routes/public/*` below describes code that has
+> since moved to `bliblitalk-user-fe`'s own backend; this repo now serves admin-only routes. Needs a
+> full regeneration via the `design-document` skill (diagrams re-derived from the current code) before
+> the pending independent review (task: admin — Independent review) relies on it.
+>
+> **⚠️ FURTHER STALE as of 2026-08-06 — the Apps Gateway migration.** This app no longer authenticates
+> anyone. Read the whole authentication story below as historical: it has been replaced, not amended.
+> Specifically, and deliberately not patched inline because the diagrams and prose would still disagree
+> with each other:
+>
+> - There is **no login endpoint, no session, no cookie and no JWT** in this repo. `POST /api/auth/login`,
+>   `POST /api/auth/microsoft`, `GET /api/auth/me`, `POST /api/auth/logout`, the whole auth router,
+>   `signToken`/`verifyToken`, `JWT_SECRET` and `COOKIE_NAME` were all deleted.
+> - Identity arrives as the **`X-User-Id` header** (the user's email), injected by Apps Gateway after it
+>   authenticates them at the edge. `requireAuth` resolves the User row from it and answers 403
+>   `NO_ADMIN_ACCOUNT` when that email holds no Admin CMS role. The gateway's own `admin` flag is ignored;
+>   roles still come from `packages/auth/src/rbac.ts`.
+> - Login and logout are **full-page navigations** to `/auth/ui/login` and `/auth/logout`, both owned by
+>   the gateway. The browser learns who is signed in from `GET /auth/api/me`, and this app's profile from
+>   `GET /api/me`.
+> - No password is stored for anyone: `CreateAdminUserInput.password` is gone, `createAdminUser` writes no
+>   `passwordHash`, and the seed sets none.
+> - **New deployment constraint:** the app must be reachable *only* through the gateway. Direct ingress
+>   would let any caller assert an identity via `X-User-Id`. See `k8s/README.md`.
+>
+> The §"API Security" subsection and the deployment/sequence diagrams are the most affected. Sections on
+> the event lifecycle, database schema, financial-risk analysis and external connections (other than the
+> mocked-SSO row) are unaffected by this change.
+
+> **⚠️ ALSO STALE as of 2026-08-06 — the `VIEWER` role was removed.** Owner decision: read-only
+> observers are not part of the org model. `VIEWER` is gone from the `Role` Postgres enum itself
+> (`migrations/20260806120000_drop_viewer_role` recreates the type; pre-existing `VIEWER` rows become
+> `PARTICIPANT`), not merely hidden. The role set is now **`SUPER_ADMIN, EVENT_ADMIN, HR_TA,
+> PARTICIPANT`**, and `ADMIN_ROLES` is the first three. Every mention of `VIEWER` below — in the
+> business-workflow and deployment diagrams, the access-model prose, the ER diagram and the `User.role`
+> field table — describes a role that no longer exists. One consequence a reviewer should note: `VIEWER`
+> was the only Admin CMS role lacking `USER_MANAGE`, so listing users is no longer deniable to any admin
+> tier; the narrowest remaining boundary is `ROLE_MANAGE`, held only by `SUPER_ADMIN`. This also answers
+> the open question raised at §"Access model" and in TEST-SCENARIO TS-020 about whether `HR_TA`/`VIEWER`
+> being cross-event was intended: half of it is moot, and `HR_TA` remaining cross-event stands.
 
 ## 0. Scope of this document
 
@@ -45,7 +87,7 @@ partway through P8, not a P1–P5 baseline.
   day, submit structured feedback, and download a verifiable PDF certificate. `bliblitalk-admin` is the
   sole backend and hosts the admin CMS used by event administrators; `bliblitalk-user-fe` is the public
   participant portal.
-  - The RBAC role set is `SUPER_ADMIN, EVENT_ADMIN, HR_TA, VIEWER, PARTICIPANT`
+  - The RBAC role set is `SUPER_ADMIN, EVENT_ADMIN, HR_TA, PARTICIPANT`
     (`bliblitalk-admin/apps/backend/src/db/prisma/schema.prisma:10-16`). `HR_TA` is explicitly labeled
     **"Talent Acquisition"** in the admin UI, not a generic HR/IT label
     (`apps/frontend/src/pages/roles/RolesPage.tsx:24,99`), and holds `MARKETING_MANAGE` +
@@ -56,7 +98,7 @@ partway through P8, not a P1–P5 baseline.
     ("company/school/organization"), **Role**, and **Years of experience**
     (`bliblitalk-user-fe/apps/frontend/src/pages/Register/RegisterPage.tsx:145-178`) — vocabulary aimed at
     external, not only internal, participants. `SiteSettings.contactEmail` defaults to
-    `recruitment@blibli.com` (`schema.prisma:245-248`).
+    `recruitment@blibli.com` (`schema.prisma:282-285`).
   - **Conclusion, confirmed by the owner:** BlibliTalk is best described as Blibli's talk-series /
     career-development event platform, **operationally owned by the Talent Acquisition function**,
     serving a **mixed audience of internal Blibli employees and external participants by design** — the
@@ -503,7 +545,7 @@ flowchart LR
 
 Single Postgres 15 database, owned exclusively by `bliblitalk-admin`'s backend — `bliblitalk-user-fe` has
 no database access of any kind (confirmed: no Prisma schema, no `DATABASE_URL` anywhere in that repo).
-16 models, all in `apps/backend/src/db/prisma/schema.prisma`, plus 2 Prisma-implicit many-to-many join
+17 models, all in `apps/backend/src/db/prisma/schema.prisma`, plus 2 Prisma-implicit many-to-many join
 tables.
 
 ```mermaid
@@ -511,6 +553,7 @@ erDiagram
     USER ||--o{ REGISTRATION : "registers"
     USER ||--o{ CERTIFICATE : "owns"
     USER ||--o{ FEEDBACK : "submits"
+    USER |o--o{ OTPCHALLENGE : "requests login codes (ON DELETE CASCADE; null owner = registration code)"
     USER }o--o{ EVENT : "administers (EventAdmins)"
     USER ||--o{ EVENT : "owns (EventOwner, nullable)"
     EVENTCATEGORY ||--o{ EVENT : "categorizes"
@@ -527,8 +570,16 @@ erDiagram
     USER {
         string id PK
         string email UK
-        string role "SUPER_ADMIN | EVENT_ADMIN | HR_TA | VIEWER | PARTICIPANT"
+        string role "SUPER_ADMIN | EVENT_ADMIN | HR_TA | PARTICIPANT"
         string employmentType "INTERNAL | EXTERNAL"
+    }
+    OTPCHALLENGE {
+        string id PK
+        string userId FK "nullable - ON DELETE CASCADE; null while a registration code is outstanding"
+        string codeHash "bcrypt - plaintext code is never stored"
+        datetime expiresAt "createdAt + 15 min"
+        int attempts "locks at 5"
+        datetime consumedAt "nullable - consumption is an UPDATE, never a DELETE"
     }
     EVENTCATEGORY {
         string id PK
@@ -611,14 +662,14 @@ erDiagram
     }
 ```
 
-**Table: `User`** (`schema.prisma:58-80`)
+**Table: `User`** (`schema.prisma:58-88`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
 | id | String (cuid) | no | PK | |
 | email | String | no | UNIQUE | login identity |
 | name | String | no | — | |
-| role | Role enum | no, default PARTICIPANT | — | `SUPER_ADMIN\|EVENT_ADMIN\|HR_TA\|VIEWER\|PARTICIPANT`; `HR_TA` is labeled "Talent Acquisition" in the admin UI |
+| role | Role enum | no, default PARTICIPANT | — | `SUPER_ADMIN\|EVENT_ADMIN\|HR_TA\|PARTICIPANT`; `HR_TA` is labeled "Talent Acquisition" in the admin UI. `VIEWER` was dropped from the enum on 2026-08-06 |
 | employmentType | EmploymentType enum | no, default EXTERNAL | — | `INTERNAL\|EXTERNAL` |
 | department | String | yes | — | |
 | position | String | yes | — | |
@@ -626,10 +677,32 @@ erDiagram
 | avatarUrl | String | yes | — | |
 | institution | String | yes | — | self-registration field, external participants (company/school/org) |
 | yearsOfExperience | String | yes | — | self-registration field |
-| passwordHash | String | no | — | bcrypt, cost 10; federated (Google) accounts get an unusable random hash |
+| passwordHash | String | **yes** | — | Legacy column, unwritten since 2026-08-06. Participants have always signed in by emailed one-time code, and staff accounts stopped storing a password when this app moved behind Apps Gateway. Kept nullable rather than dropped so pre-existing rows are not rewritten by a migration; nothing reads it |
+| createdAt | DateTime | no, default now() | — | doubles as the registration/consent timestamp for participant self-registration (GRC audit) |
+
+**Table: `OtpChallenge`** (`schema.prisma:97-117`)
+
+Email one-time-code login for participants (`bliblitalk-user-fe`, 2026-08). Its own table rather
+than columns on `User`, so each request is independently auditable and concurrent requests from
+multiple tabs/devices cannot clobber one shared row.
+
+A row with a null `userId` is a **registration** challenge: the account does not exist yet, and
+nothing identifying the applicant is stored — not even the address the code was sent to. The
+profile they typed rides in a short-lived signed token held by their browser, and the `User` row
+is created only when the code comes back, so `User.createdAt` records a completed registration
+rather than an abandoned attempt.
+
+| Field | Type | Nullable | Key | Description |
+|---|---|---|---|---|
+| id | String (cuid) | no | PK | |
+| userId | String | **yes** | FK → `User`, ON DELETE CASCADE | set for sign-in codes; null for registration codes, where no account exists yet |
+| codeHash | String | no | — | bcrypt hash of the 6-digit code; the plaintext is never stored, only emailed |
+| expiresAt | DateTime | no | — | `createdAt` + 15 minutes |
+| attempts | Int | no, default 0 | — | wrong-code count; the challenge locks at 5 |
+| consumedAt | DateTime | yes | — | set on successful verify, on lockout, and when superseded by a newer request. Consumption is an UPDATE, never a DELETE — the restricted `bliblitalk_public` role has no DELETE grant anywhere, by design |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `Speaker`** (`schema.prisma:82-93`)
+**Table: `Speaker`** (`schema.prisma:119-130`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -643,7 +716,7 @@ erDiagram
 | avatarUrl | String | yes | — | |
 | featured | Boolean | no, default false | — | |
 
-**Table: `EventCategory`** (`schema.prisma:95-101`, added migration `20260718060000_category_taxonomy`)
+**Table: `EventCategory`** (`schema.prisma:132-138`, added migration `20260718060000_category_taxonomy`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -652,7 +725,7 @@ erDiagram
 | isActive | Boolean | no, default true | — | soft-delete flag; never physically deleted |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `Event`** (`schema.prisma:103-170`) — the largest table
+**Table: `Event`** (`schema.prisma:140-207`) — the largest table
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -707,7 +780,7 @@ Indexes: `@@index([status, registrationOpensAt])`, `@@index([status, registratio
 `@@index([status, startsAt])`, `@@index([status, endsAt])` — added specifically to serve the scheduler's
 candidate-fetch queries (migration `20260716105058_lifecycle_scheduler_indexes`).
 
-**Table: `Registration`** (`schema.prisma:172-189`)
+**Table: `Registration`** (`schema.prisma:209-226`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -724,7 +797,7 @@ candidate-fetch queries (migration `20260716105058_lifecycle_scheduler_indexes`)
 Constraint: `@@unique([userId, eventId])` — one registration per user per event (a cancelled one may be
 re-created; `REJECTED` is terminal).
 
-**Table: `SpeedDatingRegistration`** (`schema.prisma:191-197`)
+**Table: `SpeedDatingRegistration`** (`schema.prisma:228-234`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -733,7 +806,7 @@ re-created; `REJECTED` is terminal).
 | sessionInfo | String | yes | — | |
 | status | String | no, default "PENDING" | — | plain string, not a DB enum |
 
-**Table: `Announcement`** (`schema.prisma:199-205`)
+**Table: `Announcement`** (`schema.prisma:236-242`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -743,7 +816,7 @@ re-created; `REJECTED` is terminal).
 | publishedAt | DateTime | no, default now() | — | |
 | pinned | Boolean | no, default false | — | |
 
-**Table: `Certificate`** (`schema.prisma:207-215`)
+**Table: `Certificate`** (`schema.prisma:244-252`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -757,7 +830,7 @@ re-created; `REJECTED` is terminal).
 re-issuance (a participant legitimately holding more than one certificate row for the same event, each
 with its own `verificationCode`) is a real, supported scenario, not an oversight.
 
-**Table: `Feedback`** (`schema.prisma:220-242`)
+**Table: `Feedback`** (`schema.prisma:257-279`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -779,14 +852,14 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 | comments | String | yes | — | |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `SiteSettings`** (`schema.prisma:245-248`) — singleton row
+**Table: `SiteSettings`** (`schema.prisma:282-285`) — singleton row
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
 | id | String | no, default "singleton" | PK | singleton pattern by convention only, not DB-enforced |
 | contactEmail | String | no, default "recruitment@blibli.com" | — | |
 
-**Table: `ModuleSettings`** (`schema.prisma:253-257`) — generic per-module JSON config store
+**Table: `ModuleSettings`** (`schema.prisma:290-294`) — generic per-module JSON config store
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -794,7 +867,7 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 | data | Json | no | — | |
 | updatedAt | DateTime | no, @updatedAt | — | |
 
-**Table: `MarketingContact`** (`schema.prisma:261-267`)
+**Table: `MarketingContact`** (`schema.prisma:298-304`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -807,7 +880,7 @@ with its own `verificationCode`) is a real, supported scenario, not an oversight
 ⚠️ No FK relation to `User`/`Registration` despite a schema comment describing this as synced from past
 registrants — confirm whether this decoupling is intentional (contacts can outlive/predate a `User` row).
 
-**Table: `EmailCampaign`** (`schema.prisma:269-279`)
+**Table: `EmailCampaign`** (`schema.prisma:306-316`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -820,7 +893,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | sentCount | Int | no, default 0 | — | |
 | failedCount | Int | no, default 0 | — | |
 
-**Table: `EmailCampaignRecipient`** (`schema.prisma:281-289`)
+**Table: `EmailCampaignRecipient`** (`schema.prisma:318-326`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -831,7 +904,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | status | String | no, default "PENDING" | — | `PENDING\|SENT\|FAILED`, plain string |
 | error | String | yes | — | |
 
-**Table: `EventReminder`** (`schema.prisma:298-314`)
+**Table: `EventReminder`** (`schema.prisma:335-351`)
 
 | Field | Type | Nullable | Key | Description |
 |---|---|---|---|---|
@@ -850,7 +923,7 @@ registrants — confirm whether this decoupling is intentional (contacts can out
 | failedCount | Int | no, default 0 | — | |
 | createdAt | DateTime | no, default now() | — | |
 
-**Table: `EventStatusHistory`** (`schema.prisma:316-329`) — the lifecycle audit trail, added migration
+**Table: `EventStatusHistory`** (`schema.prisma:353-366`) — the lifecycle audit trail, added migration
 `20260716060555_lifecycle_engine`
 
 | Field | Type | Nullable | Key | Description |
@@ -960,8 +1033,10 @@ dedicated OWASP-style review) using the detail below as its starting material.
   check, `apps/frontend/src/app/App.tsx`).
 - **Encryption & sensitive data:** Session is a signed JWT (`jsonwebtoken`, 7-day expiry) in an httpOnly
   cookie; `secure` flag is conditional on `NODE_ENV=production` (expected for local dev). **The JWT secret
-  falls back to a hardcoded default `"dev-only-change-me"`** if `ADMIN_JWT_SECRET` is unset
-  (`apps/backend/src/config.ts:7`), and the checked-in dev `.env` literally uses that same default value.
+  falls back to a hardcoded default `"dev-only-change-me"`** if `JWT_SECRET` is unset (renamed from
+  `ADMIN_JWT_SECRET` in Phase 7 of the repo split — it is no longer admin-only, since
+  `bliblitalk-user-fe`'s backend must set the exact same value; see `apps/backend/src/config.ts`), and
+  the checked-in dev `.env` literally uses that same default value.
   ⚠️ The real secret-management mechanism for a deployed environment is not settled — the placeholder
   `k8s/README.md` never actually wires a `Secret` resource, and no infrastructure exists yet (see Deployment).
   No token revocation/blacklist exists — logout only clears the cookie, the JWT itself remains valid for its

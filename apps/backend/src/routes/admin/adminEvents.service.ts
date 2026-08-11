@@ -10,8 +10,9 @@ import type {
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
-import { eventInclude } from "../public/events/events.service";
-import { toEventDTO, toEventStatusHistoryDTO } from "../../lib/shared/mappers";
+import { eventInclude } from "../../lib/shared/eventInclude";
+import { toEventDTO } from "../../lib/shared/mappers";
+import { toEventStatusHistoryDTO } from "./shared/mappers";
 import { transitionEvent } from "../../lib/lifecycle/transitionEvent";
 
 function mergeDisplayConfig(
@@ -93,6 +94,7 @@ export async function createAdminEvent(
       eventCode: input.eventCode ?? null,
       bannerUrl: input.bannerUrl ?? null,
       thumbnailUrl: input.thumbnailUrl ?? null,
+      posterUrl: input.posterUrl ?? null,
       description: input.description,
       categoryId: input.categoryId,
       tags: input.tags,
@@ -150,6 +152,7 @@ export async function updateAdminEvent(
       ...(input.eventCode !== undefined && { eventCode: input.eventCode }),
       ...(input.bannerUrl !== undefined && { bannerUrl: input.bannerUrl }),
       ...(input.thumbnailUrl !== undefined && { thumbnailUrl: input.thumbnailUrl }),
+      ...(input.posterUrl !== undefined && { posterUrl: input.posterUrl }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
       ...(input.tags !== undefined && { tags: input.tags }),

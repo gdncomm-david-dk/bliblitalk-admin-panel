@@ -52,17 +52,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_MANAGE,
     Permission.MARKETING_MANAGE,
   ],
-  [Role.VIEWER]: [Permission.EVENT_READ, Permission.PARTICIPANT_READ, Permission.ANALYTICS_READ],
   [Role.PARTICIPANT]: [],
 };
 
 /** Roles that may access the Admin CMS at all. */
-export const ADMIN_ROLES: Role[] = [
-  Role.SUPER_ADMIN,
-  Role.EVENT_ADMIN,
-  Role.HR_TA,
-  Role.VIEWER,
-];
+export const ADMIN_ROLES: Role[] = [Role.SUPER_ADMIN, Role.EVENT_ADMIN, Role.HR_TA];
 
 /** Whether a role can enter the Admin CMS. */
 export function isAdminRole(role: Role): boolean {
@@ -76,8 +70,8 @@ export function can(role: Role, permission: Permission): boolean {
 
 /**
  * Whether a role's grants are limited to events it owns/is assigned to.
- * SUPER_ADMIN sees everything; EVENT_ADMIN is scoped; HR_TA/VIEWER are read models
- * that the API scopes per feature.
+ * SUPER_ADMIN sees everything; EVENT_ADMIN is scoped; HR_TA works across events and is
+ * scoped per feature by the API instead.
  */
 export function isEventScoped(role: Role): boolean {
   return role === Role.EVENT_ADMIN;

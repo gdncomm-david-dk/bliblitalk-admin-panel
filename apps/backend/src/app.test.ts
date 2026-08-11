@@ -12,6 +12,9 @@ describe("app", () => {
     expect(res.body.status).toBe("ok");
   });
 
+  // This app issues no cookie of its own any more, but Apps Gateway's SSO cookie is still
+  // sent on every same-origin request and lands in req.headers.cookie — so the redaction
+  // these two tests pin down matters more after the migration, not less.
   it("never writes a request's session cookie to the logs", async () => {
     const secretSessionValue = "topsecret-session-jwt-9f3e";
     const chunks: string[] = [];
@@ -50,19 +53,26 @@ describe("app", () => {
     expect(output).toContain("[Redacted]");
   });
 
+  // Must match the `limit` in createAdminApiRateLimiter (rateLimit.ts) — the test drives the
+  // real ceiling rather than a guess. Since the Apps Gateway migration the limiter guards
+  // /api/admin (the gateway is what stops unauthenticated traffic); it is a blast-radius cap,
+  // not an auth control, which is why the ceiling is generous.
+  const ADMIN_API_LIMIT = 600;
+
   it("SEC-005 follow-up: rate limit buckets by the real client IP behind the documented single-hop proxy", async () => {
     const app = createApp();
 
-    for (let i = 0; i < 50; i++) {
-      const res = await request(app).get("/api/auth/me").set("X-Forwarded-For", "203.0.113.1");
+    // No X-User-Id, so every one of these is refused by requireAuth before touching the DB.
+    for (let i = 0; i < ADMIN_API_LIMIT; i++) {
+      const res = await request(app).get("/api/admin/dashboard").set("X-Forwarded-For", "203.0.113.1");
       expect(res.status).toBe(401);
     }
-    await request(app).get("/api/auth/me").set("X-Forwarded-For", "203.0.113.1").expect(429);
+    await request(app).get("/api/admin/dashboard").set("X-Forwarded-For", "203.0.113.1").expect(429);
 
     // A different client IP behind the same proxy must get its own bucket, not share
     // the exhausted one — proves trust proxy is actually keying off X-Forwarded-For
     // rather than the proxy's own socket address.
-    const otherClient = await request(app).get("/api/auth/me").set("X-Forwarded-For", "203.0.113.2");
+    const otherClient = await request(app).get("/api/admin/dashboard").set("X-Forwarded-For", "203.0.113.2");
     expect(otherClient.status).toBe(401);
-  }, 20000);
+  }, 60000);
 });

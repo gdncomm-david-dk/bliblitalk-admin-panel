@@ -16,10 +16,12 @@ describe("admin speakers CRUD", () => {
   beforeEach(purgeSyntheticSpeakers);
   afterAll(purgeSyntheticSpeakers);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -27,14 +29,14 @@ describe("admin speakers CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
+  it("rejects Talent Acquisition (no event:update permission)", async () => {
+    const agent = loginAs("hrta@gdn-commerce.com");
     const res = await agent.get("/api/admin/speakers");
     expect(res.status).toBe(403);
   });
 
   it("creates a speaker with full profile and lists it with eventCount 0", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/speakers").send({
       name: `${TEST_PREFIX}Jane`,
       title: "VP Engineering",
@@ -54,13 +56,13 @@ describe("admin speakers CRUD", () => {
   });
 
   it("rejects a nameless speaker with 422", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post("/api/admin/speakers").send({ title: "No name" });
     expect(res.status).toBe(422);
   });
 
   it("updates a speaker via PATCH", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/speakers").send({ name: `${TEST_PREFIX}Patch` });
     const res = await agent
       .patch(`/api/admin/speakers/${created.body.id}`)
@@ -71,7 +73,7 @@ describe("admin speakers CRUD", () => {
   });
 
   it("deletes a speaker", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/speakers").send({ name: `${TEST_PREFIX}Delete` });
     const res = await agent.delete(`/api/admin/speakers/${created.body.id}`);
     expect(res.status).toBe(204);
@@ -80,7 +82,7 @@ describe("admin speakers CRUD", () => {
   });
 
   it("404s on updating a missing speaker", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.patch("/api/admin/speakers/nonexistent-id").send({ name: "X" });
     expect(res.status).toBe(404);
   });

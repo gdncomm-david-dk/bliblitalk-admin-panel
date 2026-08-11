@@ -3,7 +3,7 @@ import { Permission } from "@repo/auth";
 import { SiteSettingsDTO } from "@repo/shared-types";
 import { requireAuth, requirePermission } from "../../middleware/requireAuth";
 import { validate } from "../../middleware/validate";
-import { getSiteSettings, setSiteSettings } from "../public/settings/settings.service";
+import { getSiteSettings, setSiteSettings } from "../../lib/shared/siteSettings.service";
 
 export const adminSiteSettingsRoutes = Router();
 

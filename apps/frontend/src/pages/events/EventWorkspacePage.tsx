@@ -8,7 +8,6 @@ import {
   AwardIcon,
   BellIcon,
   CalendarIcon,
-  CheckCircleIcon,
   ChevronDownIcon,
   ClockIcon,
   EditIcon,
@@ -20,15 +19,12 @@ import {
   MessageSquareIcon,
   MoreVerticalIcon,
   SettingsIcon,
-  StarIcon,
   UsersIcon,
 } from "../../components/icons";
 import { LifecycleActionBar } from "../../components/LifecycleActionBar";
 import { OverdueBanner } from "../../components/OverdueBanner";
 import { OverviewTab } from "./workspace/OverviewTab";
 import { ParticipantsTab } from "./workspace/ParticipantsTab";
-import { ShortlistTab } from "./workspace/ShortlistTab";
-import { AttendanceTab } from "./workspace/AttendanceTab";
 import { SpeedDatingTab } from "./workspace/SpeedDatingTab";
 import { CertificatesTab } from "./workspace/CertificatesTab";
 import { FeedbackTab } from "./workspace/FeedbackTab";
@@ -42,8 +38,6 @@ const PORTAL_BASE = import.meta.env.VITE_PORTAL_BASE_URL ?? "http://localhost:51
 const TABS = [
   { key: "overview", label: "Overview", icon: GridIcon },
   { key: "participants", label: "Participants", icon: UsersIcon },
-  { key: "shortlist", label: "Shortlist", icon: StarIcon },
-  { key: "attendance", label: "Attendance", icon: CheckCircleIcon },
   { key: "speed-dating", label: "Speed Dating", icon: HeartIcon },
   { key: "certificates", label: "Certificates", icon: AwardIcon },
   { key: "feedback", label: "Feedback", icon: MessageSquareIcon },
@@ -291,8 +285,6 @@ export function EventWorkspacePage() {
       <div className="mt-6">
         {tab === "overview" && <OverviewTab event={event} onSaved={reload} />}
         {tab === "participants" && <ParticipantsTab eventId={event.id} />}
-        {tab === "shortlist" && <ShortlistTab eventId={event.id} />}
-        {tab === "attendance" && <AttendanceTab event={event} onChanged={reload} />}
         {tab === "speed-dating" && <SpeedDatingTab eventId={event.id} />}
         {tab === "certificates" && <CertificatesTab event={event} />}
         {tab === "feedback" && <FeedbackTab eventId={event.id} />}

@@ -1,7 +1,5 @@
-import bcrypt from "bcryptjs";
 import dayjs from "dayjs";
 import { PrismaClient } from "@prisma/client";
-import { resolveSeedPassword } from "./seedConfig";
 
 const prisma = new PrismaClient();
 
@@ -14,6 +12,9 @@ async function main() {
   await prisma.announcement.deleteMany();
   await prisma.event.deleteMany();
   await prisma.speaker.deleteMany();
+  // Registration challenges have no userId at all (see schema.prisma), so the FK cascade
+  // below would leave them behind — this delete is the only thing that clears them.
+  await prisma.otpChallenge.deleteMany();
   await prisma.user.deleteMany();
 
   // ---- Categories ----
@@ -25,7 +26,9 @@ async function main() {
   }
 
   // ---- User ----
-  const passwordHash = bcrypt.hashSync(resolveSeedPassword(process.env), 10);
+  // No seeded password: neither app authenticates with one. bliblitalk-user-fe signs
+  // participants in by emailed one-time code, and bliblitalk-admin sits behind Apps
+  // Gateway — locally, the admin frontend's DEV-only /dev-login stands in for it.
   const demo = await prisma.user.create({
     data: {
       email: "demo@gdn-commerce.com",
@@ -33,7 +36,6 @@ async function main() {
       department: "Partnership",
       position: "External Partner",
       phone: "+62 812 0000 0000",
-      passwordHash,
     },
   });
 
@@ -344,7 +346,7 @@ async function main() {
   });
 
   // Attended (past) events registered by the demo user
-  const breakingStartsAt = t("2026-08-20T18:30:00");
+  const breakingStartsAt = t("2026-07-30T18:30:00");
   const breaking = await prisma.event.create({
     data: {
       slug: "breaking-fast-breaking-ideas",
@@ -355,7 +357,7 @@ async function main() {
       tags: ["Design", "Leadership"],
       location: "Blibli HQ, Sarana Jaya, 5th Floor",
       startsAt: breakingStartsAt,
-      endsAt: t("2026-08-20T20:30:00"),
+      endsAt: t("2026-07-30T20:30:00"),
       capacity: 120,
       status: "COMPLETED",
       ...defaultMeta(breakingStartsAt),
@@ -427,7 +429,6 @@ async function main() {
       role: "SUPER_ADMIN",
       department: "People & Culture",
       position: "Platform Administrator",
-      passwordHash,
     },
   });
   // Event Admin, scoped to two events via the EventAdmins assignment relation.
@@ -438,10 +439,21 @@ async function main() {
       role: "EVENT_ADMIN",
       department: "Talent Acquisition",
       position: "Event Organizer",
-      passwordHash,
       adminEvents: { connect: [{ id: notLost.id }, { id: learning.id }] },
     },
   });
+  // HR-scoped role — seeded so tests and local dev can exercise every ADMIN_ROLES tier,
+  // not just SUPER_ADMIN/EVENT_ADMIN.
+  await prisma.user.create({
+    data: {
+      email: "hrta@gdn-commerce.com",
+      name: "HR Talent Acquisition",
+      role: "HR_TA",
+      department: "People & Culture",
+      position: "Talent Acquisition Specialist",
+    },
+  });
+
   // Own the two assigned events; backfill publishedAt for the live ones.
   await prisma.event.updateMany({
     where: { id: { in: [notLost.id, learning.id] } },
@@ -597,7 +609,7 @@ async function main() {
   void [notLost, ai];
 
   // eslint-disable-next-line no-console
-  console.log("Seed complete: 3 users (1 participant + super/event admin), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
+  console.log("Seed complete: 4 users (1 participant, super admin, event admin, HR/TA), 10 speakers, 9 events, 4 registrations, 3 certificates, 1 speed-dating, 2 announcements");
 }
 
 main()

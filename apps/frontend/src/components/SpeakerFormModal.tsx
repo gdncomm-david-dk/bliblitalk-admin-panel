@@ -88,7 +88,8 @@ export function SpeakerFormModal({ speaker, onClose, onSaved }: SpeakerFormModal
             label="Photo"
             value={form.avatarUrl}
             onChange={(url) => set("avatarUrl", url)}
-            aspect="1 / 1"
+            recommendedWidth={800}
+            recommendedHeight={800}
             helpText="Square headshot shown on event pages."
           />
           <div>

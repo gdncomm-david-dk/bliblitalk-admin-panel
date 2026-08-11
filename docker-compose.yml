@@ -28,13 +28,11 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://blibli:blibli@db:5432/blibli_talk?schema=public
-      # Compose-only placeholder, never a real secret — must be >=32 chars or the app's own
-      # production startup check (resolveJwtSecret, config.ts) refuses to boot. Replace with a
-      # real generated secret (e.g. `openssl rand -hex 32`) for any non-throwaway environment.
-      ADMIN_JWT_SECRET: change-me-in-prod-this-is-a-placeholder-only-32chars
-      COOKIE_NAME: blibli_talk_session
+      # No JWT_SECRET/COOKIE_NAME: since the Apps Gateway migration this app signs nothing and
+      # reads no cookie (config.ts). Note this compose file runs the app WITHOUT the gateway in
+      # front of it, so nothing supplies X-User-Id — every /api/admin request answers 401. It is
+      # for exercising the container build and the DB, not for using the CMS.
       LOG_LEVEL: info
-      PUBLIC_FE_ORIGIN: http://localhost:5173
       ADMIN_FE_ORIGIN: http://localhost:4000
     depends_on:
       db:

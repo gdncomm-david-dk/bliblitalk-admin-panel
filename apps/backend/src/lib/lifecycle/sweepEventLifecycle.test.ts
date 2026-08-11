@@ -45,7 +45,7 @@ async function makeEvent(overrides: EventOverrides) {
 async function registerFiller(eventId: string, n: number) {
   for (let i = 0; i < n; i++) {
     const user = await prisma.user.create({
-      data: { email: `${PREFIX}filler-${Date.now()}-${i}@gdn-commerce.com`, name: "Filler", passwordHash: "x" },
+      data: { email: `${PREFIX}filler-${Date.now()}-${i}@gdn-commerce.com`, name: "Filler" },
     });
     await prisma.registration.create({
       data: { userId: user.id, eventId, status: RegistrationStatus.REGISTERED },

@@ -36,7 +36,6 @@ export function CertificateSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink">Certificate Settings</h1>
       <p className="mt-1 text-sm text-muted">
         Customize the certificate template issued to attendees. Per-event issuance lives in that event's
         workspace (Event Management → open an event → Certificates tab).

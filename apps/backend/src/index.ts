@@ -17,10 +17,14 @@ function sweepLifecycle() {
   sweepEventLifecycle().catch((err) => logger.error({ err }, "Failed to sweep event lifecycle"));
 }
 
-sweepReminders();
-sweepLifecycle();
-setInterval(sweepReminders, 60 * 1000);
-setInterval(sweepLifecycle, 60 * 1000);
+if (config.enableSchedulers) {
+  sweepReminders();
+  sweepLifecycle();
+  setInterval(sweepReminders, 60 * 1000);
+  setInterval(sweepLifecycle, 60 * 1000);
+} else {
+  logger.warn("Schedulers disabled (ENABLE_SCHEDULERS=false) — reminders and lifecycle sweeps will not run in this process.");
+}
 
 // In production, serve the built admin FE (single fullstack container).
 if (config.isProd) {

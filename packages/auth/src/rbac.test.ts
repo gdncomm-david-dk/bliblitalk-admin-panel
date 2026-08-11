@@ -23,10 +23,10 @@ describe("rbac", () => {
     expect(can(Role.HR_TA, Permission.EVENT_CREATE)).toBe(false);
   });
 
-  it("VIEWER is read-only", () => {
-    expect(can(Role.VIEWER, Permission.EVENT_READ)).toBe(true);
-    expect(can(Role.VIEWER, Permission.ANALYTICS_READ)).toBe(true);
-    expect(can(Role.VIEWER, Permission.EVENT_UPDATE)).toBe(false);
+  it("only SUPER_ADMIN can manage roles — that is the sole permission no other admin tier holds", () => {
+    expect(can(Role.SUPER_ADMIN, Permission.ROLE_MANAGE)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.ROLE_MANAGE)).toBe(false);
+    expect(can(Role.HR_TA, Permission.ROLE_MANAGE)).toBe(false);
   });
 
   it("PARTICIPANT holds no admin permissions and cannot enter admin", () => {
@@ -37,7 +37,17 @@ describe("rbac", () => {
   it("all admin roles (not participant) can enter the admin app", () => {
     expect(ADMIN_ROLES).not.toContain(Role.PARTICIPANT);
     expect(isAdminRole(Role.SUPER_ADMIN)).toBe(true);
-    expect(isAdminRole(Role.VIEWER)).toBe(true);
+    expect(isAdminRole(Role.EVENT_ADMIN)).toBe(true);
+    expect(isAdminRole(Role.HR_TA)).toBe(true);
+  });
+
+  // The VIEWER tier was retired by owner decision (2026-08-06). Role is a Postgres enum, so
+  // the value is gone from the database type too — this asserts nothing reintroduced it as a
+  // TypeScript-only value that Prisma would then reject at write time.
+  it("exposes exactly four roles — VIEWER was removed, not merely hidden", () => {
+    expect(Object.values(Role).sort()).toEqual(
+      ["EVENT_ADMIN", "HR_TA", "PARTICIPANT", "SUPER_ADMIN"],
+    );
   });
 
   it("only EVENT_ADMIN is event-scoped", () => {

@@ -17,14 +17,18 @@ packages/auth/          RBAC/claims shared between admin FE and backend (@repo/a
 k8s/             Kubernetes manifests for GKE deployment
 ```
 
-The backend serves two audiences behind per-prefix CORS allow-lists (never a wildcard):
+The backend serves the admin CMS only, behind a per-prefix CORS allow-list (never a wildcard).
+Apps Gateway authenticates every request at the edge and forwards the signed-in user's email in
+`X-User-Id`; this app issues no session and verifies no token of its own.
 
 | Prefix | Consumer | Auth |
 |---|---|---|
-| `/api/public/*` | `bliblitalk-user-fe` (separate repo) | public / participant session |
-| `/api/admin/*` | this repo's admin FE | admin session required |
-| `/api/auth/*` | both frontends (single unified login) | — |
-| `/api/health` | GKE probe | — |
+| `/api/admin/*` | this repo's admin FE | `X-User-Id` + an Admin CMS role on that email |
+| `/api/me` | this repo's admin FE | same — returns the caller's profile and role |
+| `/api/health`, `/api/version` | GKE and gateway probes | none, by gateway design (exact-match paths) |
+
+`/api/public/*` moved to `bliblitalk-user-fe` in Phase 5, and `/api/auth/*` was deleted in the
+Apps Gateway migration — `/auth/**` belongs to the gateway and must never be claimed by this app.
 
 In production, the backend also serves the built admin FE statically — one fullstack Docker container.
 
@@ -38,12 +42,18 @@ In production, the backend also serves the built admin FE statically — one ful
 ### Run without Docker
 ```bash
 pnpm install
-cp apps/backend/.env.example apps/backend/.env   # fill in DATABASE_URL, ADMIN_JWT_SECRET, etc.
+cp apps/backend/.env.example apps/backend/.env   # fill in DATABASE_URL, etc.
 pnpm --filter @repo/backend db:migrate
 pnpm --filter @repo/backend db:seed
 pnpm --filter @repo/backend dev     # Terminal 1 — http://localhost:4000
 pnpm --filter @repo/frontend dev    # Terminal 2 — http://localhost:5174 (proxies /api → :4000)
 ```
+
+### Signing in locally
+The CMS sits behind Apps Gateway, which authenticates the user and forwards their email in
+`X-User-Id`. The gateway is not available locally, so the dev build serves `/dev-login`: pick
+one of the seeded admin accounts and the frontend sends that email as `X-User-Id` on every API
+call. No password is involved, and the whole mechanism is compiled out of production builds.
 
 ### Run with Docker
 ```bash
@@ -60,6 +70,8 @@ pnpm turbo run lint typecheck test build
 
 ## Related repo
 
-`bliblitalk-user-fe` — the public participant-facing SPA. It contains zero backend code and only
-calls this repo's `/api/public/*` and `/api/auth/*`. Its origin must be added to `PUBLIC_FE_ORIGIN`
-here for CORS to allow it.
+`bliblitalk-user-fe` — the participant-facing app. Since Phase 5 it has its own backend and calls
+nothing here; the two share only the Postgres database (it connects through the restricted
+`bliblitalk_public` role) and the generated contracts this repo owns, which it mirrors with
+`pnpm sync:admin`. It authenticates participants itself, by emailed one-time code — it is not
+behind Apps Gateway, and deliberately so: its users are external and hold no company account.

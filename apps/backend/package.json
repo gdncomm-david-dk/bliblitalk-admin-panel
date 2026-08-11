@@ -32,10 +32,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
-    "pdfkit": "^0.19.1",
     "pino": "^9.3.0",
     "pino-http": "^10.2.0",
-    "svg-to-pdfkit": "^0.1.8",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -49,7 +47,6 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
-    "@types/pdfkit": "^0.17.6",
     "@types/supertest": "^6.0.2",
     "eslint": "^8.57.0",
     "prisma": "^6.1.0",

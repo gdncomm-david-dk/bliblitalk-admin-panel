@@ -36,10 +36,12 @@ describe("admin events CRUD", () => {
   beforeEach(purgeSyntheticEvents);
   afterAll(purgeSyntheticEvents);
 
-  async function loginAs(email: string) {
-    const agent = request.agent(app);
-    await agent.post("/api/auth/login").send({ email, password: "password123" });
-    return agent;
+  // Apps Gateway authenticates at the edge and forwards the signed-in user’s email in
+  // X-User-Id, so there is no login request to make. supertest’s agent applies .set()
+  // headers to every request it sends — the same "stays signed in" behaviour the session
+  // cookie used to give this helper.
+  function loginAs(email: string) {
+    return request.agent(app).set("X-User-Id", email);
   }
 
   it("requires auth", async () => {
@@ -47,14 +49,8 @@ describe("admin events CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects participants (no permission)", async () => {
-    const agent = await loginAs("demo@gdn-commerce.com");
-    const res = await agent.get("/api/admin/events");
-    expect(res.status).toBe(403);
-  });
-
   it("creates a draft event with an auto-generated slug", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent
       .post("/api/admin/events")
       .send(validPayload({ title: `${TEST_SLUG_PREFIX}Create Flow` }));
@@ -64,13 +60,13 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an incomplete payload with 422", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.post("/api/admin/events").send({ title: "Missing fields" });
     expect(res.status).toBe(422);
   });
 
   it("updates a field via PATCH", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}patch-me` }));
@@ -81,8 +77,48 @@ describe("admin events CRUD", () => {
     expect(res.body.capacity).toBe(250);
   });
 
+  // TS-028: the three image fields are the contract the portal reads to pick artwork per rendered
+  // shape. A field silently dropped anywhere along create -> update -> toEventDTO would not fail a
+  // typecheck (they are all optional and nullable) and would surface only as a missing picture on
+  // a page nobody is testing — so the round trip is asserted end to end, not per layer.
+  it("round-trips all three image fields through create, PATCH and the DTO", async () => {
+    const agent = loginAs("superadmin@gdn-commerce.com");
+    const created = await agent.post("/api/admin/events").send(
+      validPayload({
+        slug: `${TEST_SLUG_PREFIX}artwork`,
+        bannerUrl: "/api/uploads/banner.png",
+        thumbnailUrl: "/api/uploads/thumb.png",
+        posterUrl: "/api/uploads/poster.png",
+      }),
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.bannerUrl).toBe("/api/uploads/banner.png");
+    expect(created.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+    expect(created.body.posterUrl).toBe("/api/uploads/poster.png");
+
+    // Replacing one shape must leave the other two alone — the whole point of separate fields.
+    const patched = await agent
+      .patch(`/api/admin/events/${created.body.id}`)
+      .send({ posterUrl: "/api/uploads/poster-v2.png" });
+    expect(patched.status).toBe(200);
+    expect(patched.body.posterUrl).toBe("/api/uploads/poster-v2.png");
+    expect(patched.body.bannerUrl).toBe("/api/uploads/banner.png");
+    expect(patched.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+
+    // Clearing is distinct from omitting: null wipes the field, an absent key leaves it.
+    const cleared = await agent
+      .patch(`/api/admin/events/${created.body.id}`)
+      .send({ posterUrl: null });
+    expect(cleared.body.posterUrl).toBeNull();
+    expect(cleared.body.thumbnailUrl).toBe("/api/uploads/thumb.png");
+
+    const fetched = await agent.get(`/api/admin/events/${created.body.id}`);
+    expect(fetched.body.posterUrl).toBeNull();
+    expect(fetched.body.bannerUrl).toBe("/api/uploads/banner.png");
+  });
+
   it("publishes a draft; publishing an already-published event is an idempotent no-op", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}publish-me` }));
@@ -99,7 +135,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects publishing an event that can no longer legally reach PUBLISHED", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}publish-cancelled` }));
@@ -112,7 +148,7 @@ describe("admin events CRUD", () => {
   });
 
   it("cancels a published event", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}cancel-me` }));
@@ -124,7 +160,7 @@ describe("admin events CRUD", () => {
   });
 
   it("manual status override now enforces the transition table", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status` }));
@@ -147,7 +183,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an invalid status value on the manual override", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-invalid` }));
@@ -158,21 +194,21 @@ describe("admin events CRUD", () => {
     expect(res.status).toBe(422);
   });
 
-  it("rejects participants from the manual status override (no permission)", async () => {
-    const admin = await loginAs("superadmin@gdn-commerce.com");
+  it("rejects Talent Acquisition from the manual status override (no event:update permission)", async () => {
+    const admin = loginAs("superadmin@gdn-commerce.com");
     const created = await admin
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}manual-status-forbidden` }));
 
-    const participant = await loginAs("demo@gdn-commerce.com");
-    const res = await participant
+    const hrta = loginAs("hrta@gdn-commerce.com");
+    const res = await hrta
       .patch(`/api/admin/events/${created.body.id}/status`)
       .send({ status: "PUBLISHED" });
     expect(res.status).toBe(403);
   });
 
   it("deletes a draft event with no registrations", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}delete-me` }));
@@ -185,7 +221,7 @@ describe("admin events CRUD", () => {
   });
 
   it("refuses to delete a published event", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent
       .post("/api/admin/events")
       .send(validPayload({ slug: `${TEST_SLUG_PREFIX}no-delete` }));
@@ -196,7 +232,7 @@ describe("admin events CRUD", () => {
   });
 
   it("scopes an event admin's list + access to its assigned events only", async () => {
-    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
     const list = await eventAgent.get("/api/admin/events");
     expect(list.status).toBe(200);
     expect(list.body.length).toBe(2);
@@ -209,7 +245,7 @@ describe("admin events CRUD", () => {
   });
 
   it("attaches and replaces speakers via speakerIds", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const s1 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-1` });
     const s2 = await agent.post("/api/admin/speakers").send({ name: `${TEST_SLUG_PREFIX}speaker-2` });
 
@@ -230,7 +266,7 @@ describe("admin events CRUD", () => {
   });
 
   it("transitions via POST /transition and writes history", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}transition-me` }));
     const res = await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go" });
     expect(res.status).toBe(200);
@@ -240,7 +276,7 @@ describe("admin events CRUD", () => {
   });
 
   it("rejects an illegal transition with 409 + allowed list", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}bad-transition` }));
     // PATCH /:id/status is now guarded by the same transition table (DRAFT -> COMPLETED
     // is illegal), so this test seeds the precondition directly rather than going through
@@ -254,7 +290,7 @@ describe("admin events CRUD", () => {
   });
 
   it("returns the new lifecycle fields on GET", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}dto-fields`, selectionMode: "CURATED" }));
     const res = await agent.get(`/api/admin/events/${created.body.id}`);
     expect(res.body.selectionMode).toBe("CURATED");
@@ -263,7 +299,7 @@ describe("admin events CRUD", () => {
   });
 
   it("returns the status history for an event, newest first", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const created = await agent.post("/api/admin/events").send(validPayload({ slug: `${TEST_SLUG_PREFIX}history` }));
     await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "PUBLISHED", reason: "go live" });
     await agent.post(`/api/admin/events/${created.body.id}/transition`).send({ to: "REGISTRATION_OPEN" });
@@ -279,13 +315,13 @@ describe("admin events CRUD", () => {
   });
 
   it("404s for a nonexistent event's history", async () => {
-    const agent = await loginAs("superadmin@gdn-commerce.com");
+    const agent = loginAs("superadmin@gdn-commerce.com");
     const res = await agent.get("/api/admin/events/does-not-exist/history");
     expect(res.status).toBe(404);
   });
 
   it("scopes history access to the event admin's assigned events", async () => {
-    const eventAgent = await loginAs("eventadmin@gdn-commerce.com");
+    const eventAgent = loginAs("eventadmin@gdn-commerce.com");
     const notAssigned = await prisma.event.findFirstOrThrow({
       where: { slug: "love-hate-work-relationship" },
     });

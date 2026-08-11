@@ -11,7 +11,6 @@ enum Role {
   SUPER_ADMIN
   EVENT_ADMIN
   HR_TA
-  VIEWER
   PARTICIPANT
 }
 
@@ -68,19 +67,55 @@ model User {
   // Self-registration profile fields (Talent Engagement participants).
   institution       String?
   yearsOfExperience String?
-  passwordHash      String
-  // SEC-007: bumped on logout and on role/employment-type change; requireAuth rejects any
-  // token whose embedded tokenVersion no longer matches this column, so a leaked or
-  // still-cached token stops working immediately instead of staying valid for its full life.
+  // Legacy column: nothing writes it any more and nothing authenticates with it.
+  // Participants registering through bliblitalk-user-fe have always signed in by emailed
+  // one-time code (2026-08-04), and staff accounts stopped storing a password when
+  // bliblitalk-admin moved behind Apps Gateway (2026-08-06). Kept nullable rather than
+  // dropped so the pre-existing rows are not silently rewritten by a migration.
+  passwordHash      String?
+  // SEC-007: bumped on logout and on role/employment-type change; bliblitalk-user-fe's
+  // requireAuth rejects any session token whose embedded tokenVersion no longer matches this
+  // column, so a leaked or still-cached token stops working immediately instead of staying
+  // valid for its full life. bliblitalk-admin issues no token — the gateway authenticates it.
   tokenVersion  Int            @default(0)
   registrations Registration[]
   certificates  Certificate[]
   feedbacks     Feedback[]
+  otpChallenges OtpChallenge[]
   // Events this user administers (EVENT_ADMIN scope). Empty for other roles.
   adminEvents   Event[]        @relation("EventAdmins")
   // Events this user owns (created / is accountable for).
   ownedEvents   Event[]        @relation("EventOwner")
   createdAt     DateTime       @default(now())
+}
+
+/// Email one-time-code login for participants (bliblitalk-user-fe, 2026-08).
+/// Deliberately its own table rather than columns on User: it gives a real
+/// per-request audit trail, and it stops concurrent requests from multiple tabs
+/// or devices clobbering one shared row. Only the bcrypt hash of the code is
+/// ever stored; the plaintext exists just long enough to be emailed.
+/// Consumption is an UPDATE (consumedAt), never a DELETE — the restricted
+/// bliblitalk_public role has no DELETE grant on any table, by design.
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  /// Null while a *registration* code is outstanding: the account does not exist
+  /// yet, on purpose. Nothing identifying the applicant is stored anywhere until
+  /// they prove the address — the profile they typed rides in a short-lived signed
+  /// token held by their browser, and the User row (whose createdAt is the audited
+  /// registration/consent timestamp) is created only when the code comes back.
+  /// Set for every sign-in code, where the account already exists.
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  /// Wrong-code count. At 5 the challenge is locked (consumedAt set) and the
+  /// user must request a fresh code.
+  attempts   Int       @default(0)
+  /// Set on successful verify, on lockout, and when superseded by a newer request.
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, consumedAt])
 }
 
 model Speaker {
@@ -110,9 +145,16 @@ model Event {
   eventCode            String?
   title                String
   subtitle             String?
+  // Three images, one per shape the UI actually renders — not one image stretched into every
+  // slot. Each is optional and falls back down the list (poster → thumbnail → banner), so an
+  // admin who uploads only a banner still gets something everywhere, while an admin who cares
+  // about a particular surface can replace just that one.
+  //   banner    — wide hero strip (~1600×400): event detail hero, spotlight, admin workspace hero
   bannerUrl            String?
-  // Small poster/card image for list views; falls back to bannerUrl when unset.
+  //   thumbnail — landscape card (~800×500): every list/card/row surface in both apps
   thumbnailUrl         String?
+  //   poster    — portrait poster (~680×960): the tall poster column of a My Events row
+  posterUrl            String?
   description          String
   categoryId           String
   category             EventCategory  @relation(fields: [categoryId], references: [id])

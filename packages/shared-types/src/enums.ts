@@ -4,7 +4,6 @@ export const Role = {
   SUPER_ADMIN: "SUPER_ADMIN",
   EVENT_ADMIN: "EVENT_ADMIN",
   HR_TA: "HR_TA",
-  VIEWER: "VIEWER",
   PARTICIPANT: "PARTICIPANT",
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
