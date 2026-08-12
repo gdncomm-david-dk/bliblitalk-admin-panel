@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import type { AdminRegistrationDTO } from "@repo/shared-types";
+import { toCsv } from "@repo/shared-utils";
 import { api, ApiRequestError } from "../../../services/api";
 import {
   CheckIcon,
@@ -15,20 +16,20 @@ import {
 } from "../../../components/icons";
 
 function downloadCsv(rows: AdminRegistrationDTO[]) {
-  const header = [
-    "Name",
-    "Email",
-    "Company",
-    "Job Title",
-    "YoE",
-    "Status",
-    "Attendance",
-    "Feedback",
-    "Registered",
-    "Certificate",
-  ];
-  const lines = rows.map((r) =>
+  const csv = toCsv(
     [
+      "Name",
+      "Email",
+      "Company",
+      "Job Title",
+      "YoE",
+      "Status",
+      "Attendance",
+      "Feedback",
+      "Registered",
+      "Certificate",
+    ],
+    rows.map((r) => [
       r.userName,
       r.userEmail,
       r.userDepartment ?? "",
@@ -39,11 +40,8 @@ function downloadCsv(rows: AdminRegistrationDTO[]) {
       r.feedbackSubmitted ? "Yes" : "No",
       dayjs(r.createdAt).format("YYYY-MM-DD"),
       r.certificateCode ?? "",
-    ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(","),
+    ]),
   );
-  const csv = [header.join(","), ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
