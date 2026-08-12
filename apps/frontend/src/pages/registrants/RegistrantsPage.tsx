@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { EmploymentType, type RegistrantListResult } from "@repo/shared-types";
+import { toCsv } from "@repo/shared-utils";
 import { api, ApiRequestError } from "../../services/api";
 import { SearchIcon, DownloadIcon } from "../../components/icons";
 import { FIELD_CLASS } from "../events/workspace/fieldStyles";
@@ -12,35 +13,35 @@ const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   [EmploymentType.EXTERNAL]: "External",
 };
 
-function toCsv(result: RegistrantListResult): string {
-  const header = [
-    "Name",
-    "Email",
-    "Phone",
-    "Institution",
-    "Department",
-    "Position",
-    "YoE",
-    "Type",
-    "Events Joined",
-    "Last Joined",
-    "Registered Since",
-  ];
-  const rows = result.items.map((r) => [
-    r.name,
-    r.email,
-    r.phone ?? "",
-    r.institution ?? "",
-    r.department ?? "",
-    r.position ?? "",
-    r.yearsOfExperience ?? "",
-    EMPLOYMENT_TYPE_LABELS[r.employmentType],
-    String(r.eventsJoinedCount),
-    r.lastJoinedAt ? dayjs(r.lastJoinedAt).format("YYYY-MM-DD") : "",
-    dayjs(r.createdAt).format("YYYY-MM-DD"),
-  ]);
-  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  return [header, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+function registrantCsv(result: RegistrantListResult): string {
+  return toCsv(
+    [
+      "Name",
+      "Email",
+      "Phone",
+      "Institution",
+      "Department",
+      "Position",
+      "YoE",
+      "Type",
+      "Events Joined",
+      "Last Joined",
+      "Registered Since",
+    ],
+    result.items.map((r) => [
+      r.name,
+      r.email,
+      r.phone ?? "",
+      r.institution ?? "",
+      r.department ?? "",
+      r.position ?? "",
+      r.yearsOfExperience ?? "",
+      EMPLOYMENT_TYPE_LABELS[r.employmentType],
+      r.eventsJoinedCount,
+      r.lastJoinedAt ? dayjs(r.lastJoinedAt).format("YYYY-MM-DD") : "",
+      dayjs(r.createdAt).format("YYYY-MM-DD"),
+    ]),
+  );
 }
 
 export function RegistrantsPage() {
@@ -76,7 +77,7 @@ export function RegistrantsPage() {
 
   function exportCsv() {
     if (!result) return;
-    const blob = new Blob([toCsv(result)], { type: "text/csv" });
+    const blob = new Blob([registrantCsv(result)], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

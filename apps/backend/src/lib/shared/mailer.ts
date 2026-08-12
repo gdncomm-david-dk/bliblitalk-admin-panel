@@ -1,6 +1,15 @@
+import { createHash } from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../../config";
 import { logger } from "../../logger";
+
+/**
+ * Short, stable, non-reversible reference so two log lines for the same recipient can still
+ * be correlated during an incident without the address itself being written down.
+ */
+function emailRef(email: string): string {
+  return createHash("sha256").update(email.toLowerCase()).digest("hex").slice(0, 12);
+}
 
 export const EMAIL_NOT_CONFIGURED_MESSAGE =
   "Email sending is not configured. Set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM in the API's environment to enable real delivery.";
@@ -53,7 +62,12 @@ export async function sendBulkEmail(
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       errors.push({ email, error: message });
-      logger.warn({ email, err }, "Failed to send email");
+      // An email address is PII and never goes to logs (CLAUDE.md; and the sibling repo's
+      // registrationEmail.ts already does this). The returned `errors` array still carries
+      // the address — that goes to an authorised admin response, not to stdout, where a log
+      // platform has a wider audience and a longer retention than this CMS. `err` is narrowed
+      // to its message on purpose: an SMTP rejection commonly echoes the recipient back.
+      logger.warn({ recipientRef: emailRef(email), reason: message }, "Failed to send email");
     }
   }
   return { sentCount, failedCount: errors.length, errors };
