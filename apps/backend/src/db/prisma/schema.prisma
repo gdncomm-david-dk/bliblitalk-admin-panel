@@ -258,6 +258,21 @@ model Certificate {
   verificationCode String   @unique
   user             User     @relation(fields: [userId], references: [id])
   event            Event    @relation(fields: [eventId], references: [id])
+
+  // One certificate per person per event, enforced by the database.
+  //
+  // Two independent code paths issue certificates and neither could guarantee this on its
+  // own: bliblitalk-admin's bulk issue reads the existing rows into a Set and inserts the
+  // difference, and bliblitalk-user-fe's self-service download does a findFirst before its
+  // create. Both are check-then-insert, so two concurrent requests can both read "none" and
+  // both insert — and because they live in separate processes against a shared database,
+  // they race each other as well as themselves. verificationCode's own uniqueness does not
+  // help: each insert generates a fresh code, so duplicates for one attendee are perfectly
+  // valid by that constraint.
+  //
+  // The application-level checks stay as the fast path; this is the correctness guarantee
+  // underneath them, and both call sites now treat P2002 as "someone else already issued it".
+  @@unique([userId, eventId])
 }
 
 // One feedback submission per registration. Only collectible after attendance is
