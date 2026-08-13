@@ -7,6 +7,7 @@ import type {
   EmailCampaignDTO,
   MarketingContactDTO,
 } from "@repo/shared-types";
+import { Role } from "@repo/shared-types";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 import { sendBulkEmail } from "../../lib/shared/mailer";
@@ -108,8 +109,24 @@ export async function addContactsBulk(
   return { added, skipped };
 }
 
+/**
+ * Copies registrant addresses into the marketing audience.
+ *
+ * SEC-030: participants only. This used to select every `User` row, which swept staff
+ * accounts — the people with `MARKETING_MANAGE` — into the very list that
+ * `audience: "all"` blasts from `noreply@blibli.com`, i.e. it put the highest-value
+ * phishing targets inside the tool most able to phish them. `role: PARTICIPANT` is the
+ * same population split the portal backend enforces (see `isAdminRole` in @repo/auth);
+ * an admin who genuinely wants a colleague on the list can still add them by hand.
+ *
+ * Not fixed here, and still open on SEC-030: this conflates "registered for an event" with
+ * "consented to marketing" — there is no consent field to filter on yet.
+ */
 export async function syncContactsFromRegistrants(): Promise<{ added: number; skipped: number }> {
-  const users = await prisma.user.findMany({ select: { email: true, name: true } });
+  const users = await prisma.user.findMany({
+    where: { role: Role.PARTICIPANT },
+    select: { email: true, name: true },
+  });
   const existing = await prisma.marketingContact.findMany({
     where: { email: { in: users.map((u) => u.email) } },
     select: { email: true },

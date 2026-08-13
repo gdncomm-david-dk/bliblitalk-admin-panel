@@ -22,6 +22,7 @@ import { adminRemindersRoutes } from "./routes/admin/adminReminders.routes";
 import { adminSpeakersRoutes } from "./routes/admin/adminSpeakers.routes";
 import { adminCategoriesRoutes } from "./routes/admin/adminCategories.routes";
 import { createAdminApiRateLimiter } from "./middleware/rateLimit";
+import { createSecurityHeaders, uploadsNoSniff } from "./middleware/securityHeaders";
 
 // SEC-006: this app no longer issues any session of its own (Apps Gateway owns login), but
 // the gateway's own auth cookie still rides along on every request in `req.headers.cookie`,
@@ -43,6 +44,11 @@ export function createApp() {
   // behind it. `1` trusts exactly the nearest hop, matching that single-proxy topology --
   // revisit this number if the real topology ever adds another hop in front of the app.
   app.set("trust proxy", 1);
+
+  // SEC-032: first, so every response carries them — including 404s, the error handler's
+  // output, and the static files below, none of which pass through the routers.
+  app.disable("x-powered-by");
+  app.use(createSecurityHeaders());
 
   app.use(createRequestLogger());
   app.use(express.json());
@@ -68,7 +74,7 @@ export function createApp() {
   // login-required, so anonymous portal visitors would be redirected to the login UI and
   // these images would break. Phase 6 (uploads -> GCS) is the fix; widening the public
   // prefix to paper over it is not. See PROJECT.md "Login Method".
-  app.use("/api/uploads", express.static(UPLOADS_DIR));
+  app.use("/api/uploads", uploadsNoSniff, express.static(UPLOADS_DIR));
 
   app.use("/api", meRoutes);
 

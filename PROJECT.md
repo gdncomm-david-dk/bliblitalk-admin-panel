@@ -291,7 +291,9 @@ Seeded from the **High** tier (`golive-gate` `risk-criteria.json`), 2026-07-24:
 
 <!-- Key security measures and known gaps. Cross-reference docs/SECURITY.md rather than duplicating it. -->
 
-Remediation backlog: docs/REMEDIATION.md — 0 BLOCKING open / 1 BLOCKING fixed-not-yet-committed (SEC-024, /auth/register auth bypass, found 2026-07-24 via bliblitalk-user-fe's cross-repo audit, fixed same day) / 1 BLOCKING fixed (GLG-002, migrated to gdncomm-ops, 2026-08-03) / 3 BLOCKING waived / 28 ADVISORY open (last audited 2026-07-24).
+Remediation backlog: docs/REMEDIATION.md — **4 BLOCKING open (SEC-025, SEC-027, SEC-029, SEC-030)** / 15 BLOCKING fixed / 3 BLOCKING waived / 24 ADVISORY open (last audited 2026-08-11, external Information Security review; statuses last reconciled 2026-08-13).
+
+The four open items are the ones that need somebody other than the agent: **SEC-025** (X-User-Id is trusted without proof of gateway origin) needs an Apps Gateway platform answer; **SEC-027** (unauthenticated uploads route) is Phase 6, uploads → GCS; **SEC-029** (no audit trail of admin actions) is a schema-and-design change; **SEC-030** (MARKETING_MANAGE scope) is a product decision about who may mass-email — its staff-address-leak half was fixed 2026-08-13. Also open and not yet transcribed: the review's 6 Low and 1 Informational findings.
 
 ## Hosting Location
 
