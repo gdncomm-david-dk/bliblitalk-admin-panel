@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { EmploymentType, type RegistrantListResult } from "@repo/shared-types";
-import { toCsv } from "@repo/shared-utils";
+import { can, Permission } from "@repo/auth";
 import { api, ApiRequestError } from "../../services/api";
 import { SearchIcon, DownloadIcon } from "../../components/icons";
+import { useAuthStore } from "../../store/authStore";
 import { FIELD_CLASS } from "../events/workspace/fieldStyles";
 
 const PAGE_SIZE = 20;
@@ -13,36 +14,10 @@ const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   [EmploymentType.EXTERNAL]: "External",
 };
 
-function registrantCsv(result: RegistrantListResult): string {
-  return toCsv(
-    [
-      "Name",
-      "Email",
-      "Phone",
-      "Institution",
-      "Department",
-      "Position",
-      "YoE",
-      "Type",
-      "Events Joined",
-      "Last Joined",
-      "Registered Since",
-    ],
-    result.items.map((r) => [
-      r.name,
-      r.email,
-      r.phone ?? "",
-      r.institution ?? "",
-      r.department ?? "",
-      r.position ?? "",
-      r.yearsOfExperience ?? "",
-      EMPLOYMENT_TYPE_LABELS[r.employmentType],
-      r.eventsJoinedCount,
-      r.lastJoinedAt ? dayjs(r.lastJoinedAt).format("YYYY-MM-DD") : "",
-      dayjs(r.createdAt).format("YYYY-MM-DD"),
-    ]),
-  );
-}
+// SEC-011: the CSV builder that used to live here moved to the API
+// (`adminUsers.service.ts` → `registrantCsv`). Building it in the browser is what made the
+// export ungateable and unauditable, and it also meant "Export" only ever wrote the page
+// currently on screen. The column set and formatting are unchanged.
 
 export function RegistrantsPage() {
   const [result, setResult] = useState<RegistrantListResult | null>(null);
@@ -50,6 +25,11 @@ export function RegistrantsPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  // SEC-011: hiding the control is UX, not the control itself — the API refuses the request
+  // regardless (see SEC-010 on why client-side gating alone is never the boundary).
+  const role = useAuthStore((s) => s.user?.role);
+  const canExport = role ? can(role, Permission.REGISTRANT_EXPORT) : false;
 
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
@@ -75,15 +55,29 @@ export function RegistrantsPage() {
     }
   }
 
-  function exportCsv() {
-    if (!result) return;
-    const blob = new Blob([registrantCsv(result)], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `registrants-${dayjs().format("YYYY-MM-DD")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  /**
+   * SEC-011: the file is built by the API, not here. That is what makes the export gateable
+   * (`registrant:export`) and auditable — and it also fixes a quieter bug, because the old
+   * client-side version only ever exported the page currently on screen.
+   */
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      const search = query.trim();
+      const csv = await api.getText(`/admin/users/export${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `registrants-${dayjs().format("YYYY-MM-DD")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to export registrants.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.total / PAGE_SIZE)) : 1;
@@ -98,14 +92,16 @@ export function RegistrantsPage() {
             future events (see Marketing Email).
           </p>
         </div>
-        <button
-          onClick={exportCsv}
-          disabled={!result?.items.length}
-          className="flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-40"
-        >
-          <DownloadIcon width={16} height={16} />
-          Export CSV
-        </button>
+        {canExport && (
+          <button
+            onClick={exportCsv}
+            disabled={!result?.items.length || exporting}
+            className="flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-40"
+          >
+            <DownloadIcon width={16} height={16} />
+            {exporting ? "Exporting…" : "Export CSV"}
+          </button>
+        )}
       </div>
 
       <div className="relative mt-5 max-w-sm">

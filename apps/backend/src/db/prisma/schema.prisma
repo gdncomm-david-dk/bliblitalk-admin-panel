@@ -388,3 +388,28 @@ model EventStatusHistory {
 
   @@index([eventId, createdAt])
 }
+
+/// SEC-011: a durable record of who exported participant PII, how much of it, and when.
+/// `actorId`/`actorEmail` are stored flat with no relation to `User` on purpose — the same
+/// reasoning as `EventStatusHistory.actorId`. An audit row that a cascade could delete is not
+/// an audit row, and the email is kept denormalised so the trail still names the actor if the
+/// account is ever removed.
+///
+/// Deliberately generic (`action` is a string, the target is optional) so the audit trail
+/// SEC-029 requires for role grants, bulk email and participant decisions can extend this
+/// table rather than adding a second one.
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String // e.g. "REGISTRANT_EXPORT" | "EVENT_PARTICIPANT_EXPORT"
+  actorId    String
+  actorEmail String
+  actorRole  String
+  targetType String? // e.g. "Event" for a per-event export
+  targetId   String?
+  rowCount   Int? // how many PII rows left the system in this action
+  detail     String? // free-form context, e.g. the search filter the export ran under
+  createdAt  DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+}

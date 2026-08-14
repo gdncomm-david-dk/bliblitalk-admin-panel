@@ -29,6 +29,18 @@ describe("rbac", () => {
     expect(can(Role.HR_TA, Permission.ROLE_MANAGE)).toBe(false);
   });
 
+  // SEC-011. The split is the whole point of the permission: an EVENT_ADMIN still reads its own
+  // events' participants on screen, but cannot take a copy of everyone's contact details away.
+  it("bulk PII export is limited to SUPER_ADMIN and HR_TA", () => {
+    expect(can(Role.SUPER_ADMIN, Permission.REGISTRANT_EXPORT)).toBe(true);
+    expect(can(Role.HR_TA, Permission.REGISTRANT_EXPORT)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.REGISTRANT_EXPORT)).toBe(false);
+    expect(can(Role.PARTICIPANT, Permission.REGISTRANT_EXPORT)).toBe(false);
+    // …while the on-screen read stays where it was, so nobody lost the ability to do their job.
+    expect(can(Role.EVENT_ADMIN, Permission.PARTICIPANT_READ)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.USER_MANAGE)).toBe(true);
+  });
+
   it("PARTICIPANT holds no admin permissions and cannot enter admin", () => {
     expect(can(Role.PARTICIPANT, Permission.EVENT_READ)).toBe(false);
     expect(isAdminRole(Role.PARTICIPANT)).toBe(false);

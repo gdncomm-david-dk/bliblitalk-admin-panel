@@ -99,6 +99,74 @@ describe("admin users", () => {
     expect(after.tokenVersion).toBe(before.tokenVersion + 1);
   });
 
+  // SEC-011 — the registrant export. The rows themselves are the seeded users; what is under
+  // test is who may pull them out as a file, and whether that leaves a trace.
+  describe("registrant export", () => {
+    async function auditRowsFor(actorEmail: string) {
+      return prisma.auditLog.findMany({
+        where: { action: "REGISTRANT_EXPORT", actorEmail },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    afterAll(async () => {
+      await prisma.auditLog.deleteMany({
+        where: {
+          action: "REGISTRANT_EXPORT",
+          actorEmail: { in: ["superadmin@gdn-commerce.com", "eventadmin@gdn-commerce.com"] },
+        },
+      });
+    });
+
+    it("requires auth", async () => {
+      const res = await request(app).get("/api/admin/users/export");
+      expect(res.status).toBe(401);
+    });
+
+    // The finding in one assertion: this admin can still read the registrant list (USER_MANAGE,
+    // scoped to its own events) and can no longer download it.
+    it("refuses an event admin, who keeps the on-screen list", async () => {
+      const agent = loginAs("eventadmin@gdn-commerce.com");
+
+      const list = await agent.get("/api/admin/users");
+      expect(list.status).toBe(200);
+
+      const res = await agent.get("/api/admin/users/export");
+      expect(res.status).toBe(403);
+      expect(await auditRowsFor("eventadmin@gdn-commerce.com")).toHaveLength(0);
+    });
+
+    it("serves a CSV to a super admin and records the export", async () => {
+      const res = await loginAs("superadmin@gdn-commerce.com").get("/api/admin/users/export");
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/text\/csv/);
+      expect(res.headers["content-disposition"]).toMatch(/attachment; filename="registrants-/);
+      // Quoted, because toCsv quotes every field — that is the SEC-026 formula-injection guard.
+      expect(res.text).toContain('"Name","Email","Phone"');
+      expect(res.text).toContain("demo@gdn-commerce.com");
+
+      const [audit] = await auditRowsFor("superadmin@gdn-commerce.com");
+      expect(audit?.actorRole).toBe("SUPER_ADMIN");
+      expect(audit?.rowCount).toBeGreaterThanOrEqual(3);
+      expect(audit?.detail).toContain("no filter");
+    });
+
+    // The old client-side export wrote whatever page happened to be on screen. The server one
+    // applies the search across the whole table, and the audit row records the filter used.
+    it("applies the search filter and records it", async () => {
+      const res = await loginAs("superadmin@gdn-commerce.com").get(
+        "/api/admin/users/export?search=demo@gdn-commerce.com",
+      );
+      expect(res.status).toBe(200);
+      expect(res.text).toContain("demo@gdn-commerce.com");
+      expect(res.text).not.toContain("superadmin@gdn-commerce.com");
+
+      const [audit] = await auditRowsFor("superadmin@gdn-commerce.com");
+      expect(audit?.rowCount).toBe(1);
+      expect(audit?.detail).toContain("search=demo@gdn-commerce.com");
+    });
+  });
+
   it("provisioning an admin stores no credential — the gateway authenticates them", async () => {
     const created = await loginAs("superadmin@gdn-commerce.com").post("/api/admin/users").send({
       name: "Gateway No-Credential Test",
