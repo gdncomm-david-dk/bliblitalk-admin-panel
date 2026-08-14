@@ -300,7 +300,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/backend/src/routes/auth/auth.routes.ts:14-20` (moved from `apps/backend/src/routes/public/auth/auth.routes.ts:13-19` — `routes/public/auth/` is now an empty leftover directory from the 2026-08 repo split; same fixed 7-day `maxAge`, still no idle timeout, so this finding remains genuinely open, just at the new path)
 - **Why advisory:** Fixed 7-day cookie/JWT life regardless of activity — a session used once and abandoned is equally valid as one used continuously.
 - **Suggested fix:** Add a sliding idle timeout (re-issue on activity with a shorter absolute window, or track last-seen server-side).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — moot, see the note below)
 - **Note (2026-08-06):** Moot in this repo since the Apps Gateway migration: the app holds no session, so there is no cookie lifetime for it to shorten. Session lifetime and idle policy are the gateway's now, set centrally at `/auth/ui/apps` rather than per app. The equivalent finding remains genuinely open in `bliblitalk-user-fe`, which issues its own 7-day participant sessions.
 
 ### SEC-017 — Upload MIME validation checks the client-supplied header only  [OPEN]
@@ -327,7 +327,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `packages/shared-types/src/schemas.ts:37-41` (`RegisterInput`), `:732-741` (`CreateAdminUserInput`)
 - **Why advisory:** 8-character minimum, no complexity rule, for accounts (including SUPER_ADMIN-provisioned staff) that reach real PII platform-wide.
 - **Suggested fix:** Raise the admin-account minimum (12+ chars) and/or add a complexity or breached-password check, at minimum for `CreateAdminUserInput`.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — moot, see the note below)
 - **Note (2026-08-06):** Moot: there is no password policy to strengthen because there are no passwords. `CreateAdminUserInput.password` was deleted and `createAdminUser` no longer writes `passwordHash` — provisioning a staff member now only attaches an Admin CMS role to their email, and Apps Gateway authenticates them with their company account. `RegisterInput`'s password field had already gone with the participant email-OTP change (2026-08-04).
 
 ### SEC-020 — JWT verification has no explicit algorithm allowlist  [FIXED (2026-07-24)]
@@ -468,7 +468,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/frontend/src/pages/LoginPage.tsx:151-155` — `Demo: superadmin@gdn-commerce.com / password123`, wrapped in `{import.meta.env.DEV && (...)}`
 - **Why advisory:** Verified stripped from the production bundle (`vite build`, matching the SEC-001/002 fix's own verification) — not reachable outside local dev. It is still a literal credential string in source, and it is only accurate because this repo's gitignored `apps/backend/.env` happens to still set `SEED_ADMIN_PASSWORD=password123` (the committed `.env.example` documents a different placeholder, `changeme-for-local-dev`) — so the hint is real today but will silently go stale for anyone who rotates their local `SEED_ADMIN_PASSWORD`.
 - **Suggested fix:** Either remove the literal and point to `.env.example`'s documented variable name instead of a value, or accept as-is (dev-only UX convenience) with a comment noting it must track whatever `SEED_ADMIN_PASSWORD` is locally set to.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — see the note below)
 - **Note (2026-08-06):** Resolved by deletion rather than by editing the hint. `apps/frontend/src/pages/LoginPage.tsx` no longer exists — the whole password login surface went with the Apps Gateway migration. Its replacement, `DevLoginPage.tsx`, lists seeded admin *emails* only and verifies nothing, because there is no credential to hint at; `SEED_ADMIN_PASSWORD` itself has also been removed (see SEC-004). Verified absent from the production bundle.
 
 ### SEC-023 — Rate limiter's in-memory store won't scale across multiple replicas  [OPEN]
