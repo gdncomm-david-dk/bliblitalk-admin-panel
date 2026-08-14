@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Review Finding 12: the workflow ran on the default token scope. Nothing here writes to the
+# repository, so read is all the token should be able to do.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -59,3 +64,31 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # Review Finding 12: nothing in CI looked at dependency advisories, so a known-vulnerable
+  # transitive package could sit in the tree indefinitely. Separate job because it needs no
+  # database and should report even when the main job is already failing on a test.
+  #
+  # Gated at `high`, not `moderate`: the tree carries 4 moderate advisories today, all in
+  # build tooling, and a gate that is red on arrival gets ignored rather than acted on. The
+  # `pnpm.overrides` block in the root package.json pins the patched versions of the five
+  # packages that were high when this was added.
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies (fails on high or critical)
+        run: pnpm audit --audit-level=high

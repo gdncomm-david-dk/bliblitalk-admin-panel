@@ -68,4 +68,19 @@ describe("requireAuth (Apps Gateway identity)", () => {
     const res = await request(app).get("/api/me").set(USER_ID_HEADER, "nobody-here@gdn-commerce.com");
     expect(res.status).toBe(403);
   });
+
+  // Review Finding 16: account creation lowercases the address, this lookup did not, so an
+  // identity provider forwarding the address as the user typed it produced a spurious 403.
+  it("resolves the account whatever case the gateway forwards the address in", async () => {
+    const res = await request(app)
+      .get("/api/me")
+      .set(USER_ID_HEADER, "SuperAdmin@GDN-Commerce.com");
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe("superadmin@gdn-commerce.com");
+  });
+
+  it("tolerates surrounding whitespace in the forwarded header", async () => {
+    const res = await request(app).get("/api/me").set(USER_ID_HEADER, "  superadmin@gdn-commerce.com  ");
+    expect(res.status).toBe(200);
+  });
 });

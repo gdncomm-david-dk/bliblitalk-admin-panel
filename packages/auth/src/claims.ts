@@ -10,14 +10,24 @@ export interface SessionClaims {
   tokenVersion: number;
 }
 
-/** Narrow an unknown decoded JWT payload to SessionClaims, or null if malformed. */
+/**
+ * Narrow an unknown decoded JWT payload to SessionClaims, or null if malformed.
+ *
+ * bliblitalk-user-fe's review Finding 16 (Informational): `role` and `tokenVersion` used to
+ * fall back to `PARTICIPANT` and `0` when they were absent or the wrong type. Substituting a
+ * default turns a token that does not carry well-formed claims into a valid-looking session —
+ * and `0` in particular is a real `tokenVersion`, so a token missing that claim compared equal
+ * to a user who had never logged out and passed the SEC-007 revocation check unchallenged.
+ * Fail closed instead: every token this codebase issues sets both fields explicitly, so
+ * requiring them rejects nothing legitimate.
+ */
 export function toSessionClaims(decoded: unknown): SessionClaims | null {
   if (typeof decoded !== "object" || decoded === null) return null;
   const d = decoded as Record<string, unknown>;
   if (typeof d.sub !== "string" || typeof d.email !== "string") return null;
-  const role = isRole(d.role) ? d.role : Role.PARTICIPANT;
-  const tokenVersion = typeof d.tokenVersion === "number" ? d.tokenVersion : 0;
-  return { sub: d.sub, email: d.email, role, tokenVersion };
+  if (!isRole(d.role)) return null;
+  if (typeof d.tokenVersion !== "number" || !Number.isInteger(d.tokenVersion)) return null;
+  return { sub: d.sub, email: d.email, role: d.role, tokenVersion: d.tokenVersion };
 }
 
 function isRole(v: unknown): v is Role {

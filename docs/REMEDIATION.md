@@ -10,7 +10,7 @@ pre-existing code: documented with a migration note, fixed during normal work, n
 gate — but new or modified code must comply immediately regardless of tier. Statuses may be
 edited by humans; IDs, waiver notes, and FIXED entries are never deleted, only appended to.
 
-Last audited: 2026-08-11 — Information Security review (external, human-led) at commit `738f155`. Its 9 Medium-and-above findings were re-verified against HEAD on 2026-08-12 and recorded as SEC-025…SEC-032 plus a re-tier of SEC-023; the review's 6 Low and 1 Informational findings are not yet transcribed. Earlier: 2026-07-24 agent audits, re-dispositioned 2026-08-06 after the Apps Gateway migration (see the dated Notes).
+Last audited: 2026-08-11 — Information Security review (external, human-led) at commit `738f155`. Its 9 Medium-and-above findings were re-verified against HEAD on 2026-08-12 and recorded as SEC-025…SEC-032 plus a re-tier of SEC-023. Its remaining 6 Low and 1 Informational findings were transcribed and fixed on 2026-08-14: Findings 15, 16, 13 and 12 as new entries SEC-033…SEC-036, and three that this backlog was already tracking under their existing IDs rather than new ones — SEC-012 (URL validation), SEC-017 (upload content-type, partially) and SEC-021 (certificate entropy). Two sub-parts remain OPEN by external constraint, both under SEC-036: CodeQL and secret scanning need GitHub Advanced Security, which is not enabled for private repositories in this organisation. Earlier: 2026-07-24 agent audits, re-dispositioned 2026-08-06 after the Apps Gateway migration (see the dated Notes).
 
 **Tiering note for the 2026-08-11 review (added 2026-08-12).** Findings from that review are tiered by **the reviewer's own severity** — `High` → BLOCKING, `Medium` → BLOCKING — not by the agent's judgement. The security team's instruction with the report was to verify first and focus on Medium and above. Per this backlog's standing rule, downgrading or waiving any of them requires a named Information Security sign-off recorded on the finding and in `PROJECT.md` Review Evidence; the agent does not reclassify them. Every entry below records what was re-verified against HEAD, so a reviewer can see which claims were checked rather than transcribed.
 
@@ -261,13 +261,14 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** If bulk export must stay self-service, add a distinct export permission and have the backend audit-log the export (actor, row count, timestamp).
 - **Status:** OPEN
 
-### SEC-012 — URL-typed content fields lack `.url()` validation  [OPEN]
+### SEC-012 — URL-typed content fields lack `.url()` validation  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (frontend/shared), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `packages/shared-types/src/schemas.ts:200-201,230-232,380-381,403-406` (`bannerUrl`, `thumbnailUrl`, `recordingUrl`, `presentationUrl`, `galleryImages`)
 - **Why advisory:** Bare `z.string()` with no format constraint. Limited exploitability (React sets `bannerUrl` as a CSS property value, not a raw attribute — cannot break out into script), but nothing stops an admin from pointing these at arbitrary non-URL/attacker-controlled values.
 - **Suggested fix:** Add `.url()` to these schema fields so the shared contract rejects non-URL values server-side.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Fixed with a shared `SafeUrl` refinement in `packages/shared-types/src/schemas.ts`, not with `.url()`. `.url()` was the wrong tool twice over: it **accepts** `javascript:` and `data:` (they are valid URLs), and it **rejects** the relative paths these fields legitimately hold (`/uploads/...` from the upload endpoint). `SafeUrl` allows only an `http(s)://` absolute URL or a path starting with a single `/`, caps length at 2048, and permits `""` so clearing a form field still validates. The single-slash rule is load-bearing: the reviewer's own suggested `v.startsWith("/")` test would have accepted `//evil.example`, which a browser reads as protocol-relative and fetches off-site. Applied to `bannerUrl`, `thumbnailUrl`, `posterUrl`, `mapsUrl`, `recordingUrl`, `presentationUrl`, `galleryImages` (per item), `CreateSpeakerInput.avatarUrl`, and `LoginCarouselSlideDTO.imageUrl`. Covered by 10 tests in `schemas.test.ts`. Mirrored into `bliblitalk-user-fe`, closing its SEC-003 (the client-side half is `apps/frontend/src/lib/safeExternalUrl.ts` there).
 
 ### SEC-013 — `VITE_PORTAL_BASE_URL` silently falls back to plaintext localhost  [OPEN]
 - **Source:** `code-review/audit-security` (frontend), should-fix
@@ -308,7 +309,9 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/backend/src/routes/admin/adminUploads.routes.ts:13-36`
 - **Why advisory:** Validated only against `file.mimetype` (client-controlled header), never actual file bytes/magic numbers. Requires `EVENT_UPDATE` permission to reach.
 - **Suggested fix:** Add a magic-byte sniff (e.g. the `file-type` package) in `fileFilter` before accepting the upload.
-- **Status:** OPEN
+- **Status:** OPEN — content-type half FIXED (2026-08-14); storage-location and quota halves remain
+- **Note (2026-08-14) — partially fixed.** The finding as written (trusting `file.mimetype`) is closed. `adminUploads.routes.ts` now buffers through `multer.memoryStorage()`, sniffs the real magic bytes with the new `lib/shared/imageType.ts`, and only then writes to disk; the stored extension comes from the sniffed type, never from the client's filename, and the filename itself is `randomBytes(16).toString("hex")` so an uploader cannot choose or guess a path. `limits: { fileSize: 5MB, files: 1 }` bounds a single request. No new dependency: `file-type` is ESM-only and would not import into this CJS backend, and only four signatures are needed (PNG, JPEG, GIF87a/89a, RIFF+WEBP), so they are hand-written and unit-tested in `imageType.test.ts`.
+  **Still open, deliberately:** (a) the uploads directory is served without authentication, and (b) there is no disk quota — a legitimate admin can fill the volume 5MB at a time. Both are properties of local-disk storage, which Phase 6 replaces with Google Cloud Storage; fixing them in place would be work thrown away. `k8s/README.md` now specifies the interim control (an `emptyDir` with an explicit `sizeLimit`, since `readOnlyRootFilesystem: true` otherwise blocks writes entirely).
 
 ### SEC-018 — Bulk email sends have no actor attribution  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -337,21 +340,23 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Note (2026-08-03):** The cited location above (`apps/backend/src/routes/public/auth/auth.service.ts:17-24`) is stale — `auth.service.ts` moved (per the internal shared-infra reorganization) from `apps/backend/src/routes/public/auth/` to `apps/backend/src/lib/shared/auth.service.ts`. Confirmed the `verifyToken` function with `{ algorithms: ["HS256"] }` sits at the exact same line numbers, 17-24, just under the new path. The fix itself is unaffected — only the location citation was stale.
 - **Note (2026-08-06):** The code this finding covers no longer exists here: `signToken`/`verifyToken` were deleted from `apps/backend/src/lib/shared/auth.service.ts` with the Apps Gateway migration, leaving only `toUserDTO`. Coverage moved rather than lapsed — the identical `{ algorithms: ["HS256"] }` pin and its regression test (sign with HS384, assert rejection) live in `bliblitalk-user-fe/apps/backend/src/lib/shared/auth.service.ts` and its test file, which is where tokens are still verified. Confirmed present there before this repo's copy was deleted.
 
-### SEC-021 — Certificate verification code has low entropy (32 bits)  [OPEN]
+### SEC-021 — Certificate verification code has low entropy (32 bits)  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/backend/src/lib/shared/certificateCode.ts:1-5`
 - **Why advisory:** `randomBytes(4)` → 32 bits. Not exploitable today (confirmed: no public endpoint accepts this code as a lookup key; display-only on the PDF) — documented constraint for any future "verify my certificate" endpoint.
 - **Suggested fix:** Widen to `randomBytes(16)`+ before any public verification endpoint is built, or document the constraint explicitly.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `randomBytes(4)` → `randomBytes(16)` (32 → 128 bits), encoded as 26 Crockford base32 characters read as a bit stream so no entropy is lost to rounding. Crockford rather than hex because it is a third shorter at the same entropy and omits the characters people misread off a printed certificate (I and L are not in the alphabet; O and U are excluded so they cannot be confused with 0 and V). Measured before changing a printed artefact: at 16px Helvetica-Bold the longer ID line is 315pt inside a 716pt content width, against 371pt for the recognition line already above it — so it still fits on one line. Already-issued codes keep their old shape and stay valid: nothing re-issues them, `verificationCode` is only ever compared for equality, and `@unique` holds across both lengths. The `BT2-CERT-` prefix is unchanged — `adminCertificates.routes.test.ts` asserts on it, and that assertion was right. `bliblitalk-user-fe` carries a byte-identical copy of `certificateCode.ts` that is **not** in the `pnpm sync:admin` manifest, so both were edited by hand; a future change must do the same or the two apps start minting different code shapes into the same table.
 
-### DEP-004 — vite 5.4.21: 3 non-critical OSV advisories (devDependency)  [OPEN]
+### DEP-004 — vite 5.4.21: 3 non-critical OSV advisories (devDependency)  [FIXED (2026-08-14)]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
 - **Tier rule matched:** `other-vuln` → ADVISORY
 - **Location:** `apps/frontend` (devDependency) — GHSA-fx2h-pf6j-xcff (High), GHSA-4w7w-66w2-5vf9 (Medium), GHSA-v6wh-96g9-6wx3 (Medium, Windows-specific)
 - **Why advisory:** Dev-tooling only, not shipped in the production bundle; no known active exploitation.
 - **Suggested fix:** Upgrade `vite` to ≥6.4.3 in `apps/frontend` (major version bump — plan and test the Vite 6 migration).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Resolved via a `pnpm.overrides` pin in the root `package.json` rather than by editing `apps/frontend`'s own range, so the whole tree (including transitives) moves together. **The realised jump is larger than this finding asked for: 5.4.21 → 8.2.1, three majors, not one.** That was not the intent — the override was first written as `">=6.4.3"`, and an open-ended range resolves to the newest published major. It has since been pinned to the exact version, along with the other four overrides (`brace-expansion` 5.0.9, `ip-address` 10.5.0, `js-yaml` 5.2.3, `nanoid` 6.0.1); before pinning, `ip-address` had already drifted to different versions in the two repos (10.5.0 here, 10.4.0 in `bliblitalk-user-fe`) across two installs, which is exactly the reproducibility hazard the pin removes. Verified on 8.2.1: `pnpm typecheck`, `pnpm lint`, `pnpm test` and a forced (uncached) `pnpm build` all pass in both repos, and `pnpm audit --audit-level=high` is clean. Vite 8 uses the Rolldown bundler, so **the built asset pipeline is materially different from what was reviewed** — this warrants a look during PR review even though the build and tests are green.
 
 ### DEP-005 — react-router / react-router-dom 6.30.4: 3 non-critical OSV advisories (production dependency)  [OPEN]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
@@ -361,13 +366,13 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** Plan the react-router v6→v7 migration (breaking), or apply and document compensating controls (validate/allowlist all redirect targets; no user-controlled `useNavigate`/`<Link to>` values) as an interim risk acceptance.
 - **Status:** OPEN
 
-### DEP-006 — esbuild 0.21.5: dev-server request-origin advisory (transitive, dev-only)  [OPEN]
+### DEP-006 — esbuild 0.21.5: dev-server request-origin advisory (transitive, dev-only)  [FIXED (2026-08-14)]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
 - **Tier rule matched:** `other-vuln` → ADVISORY
 - **Location:** transitive of `apps/frontend`'s `vite@5.4.21` (devDependency) — GHSA-67mh-4wv8-2f99
 - **Why advisory:** Dev-server-only exposure; resolved incidentally by the DEP-004 vite upgrade.
 - **Suggested fix:** Resolved by bumping `vite` per DEP-004.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14) — as predicted, carried by the DEP-004 vite pin; `esbuild@0.21.5` is no longer in the tree.
 
 ### DEP-007 — eslint 8.57.1 is registry-flagged deprecated across every workspace  [OPEN]
 - **Source:** `scan-dependency/scan-deps`, should-fix (dependency hygiene)
@@ -475,3 +480,40 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Status:** OPEN
 - **Note (2026-08-12) — re-tiered ADVISORY → BLOCKING by external review.** The Information Security review of 2026-08-11 records this same defect as its Finding 9 (Medium severity, Medium confidence) and adds a second dimension the original entry did not cover: `app.ts:45` sets `trust proxy 1`, so `req.ip` is taken as the second-to-last `X-Forwarded-For` entry — a hop count that **cannot be verified from this repo**, because no Ingress/Service manifest exists and `docker-compose.yml` publishes the port with no proxy at all. With zero real hops a client sets `X-Forwarded-For` freely and gets a fresh bucket per request, removing the limit entirely; with two, every request buckets under the intermediate proxy and all users share one counter, which is a self-inflicted denial of service. Verified against HEAD 2026-08-12: in-memory store, `limit: 600` / 15 min, `trust proxy 1`, and `k8s/README.md:40` still specifies `2+ replicas`. Per this backlog's rule that only a named Information Security sign-off may waive or downgrade, the tier now follows the external review's severity; reclassifying it back to ADVISORY is InfoSec's call, not the agent's. Extended fix: move the limiter to a shared store (`rate-limit-redis`), **and** make the hop count verifiable — commit the real Ingress/Service manifests and assert the resolved `req.ip` in a startup log line so a wrong `trust proxy` value is visible in an environment instead of silently changing behaviour.
 - **Status:** OPEN (BLOCKING as of 2026-08-12)
+
+### SEC-033 — Category CRUD is gated on `EVENT_UPDATE`, so any event admin can rewrite the platform-wide taxonomy  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 15 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `apps/backend/src/routes/admin/adminCategories.routes.ts`, `apps/frontend/src/pages/settings/SiteSettingsPage.tsx`
+- **Why advisory:** Not a privilege escalation and not a data-disclosure path — every role that reaches these routes is already staff. The defect is blast radius: `EVENT_UPDATE` is the permission an event admin needs to edit *their own* event, and it was also letting them rename or delete a category every other event in the system is filed under.
+- **Suggested fix:** Move the mutating routes to a settings-scoped permission.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `POST`/`PATCH`/`DELETE` now require `SETTINGS_MANAGE`. `GET` deliberately stays on `EVENT_UPDATE` — an event admin must still read the category list to file their own event, and taking that away would break the event form for the role that uses it most. The admin UI's Categories tab moved to the same permission so the tab is not offered to someone who would be refused on submit. Covered in `adminCategories.routes.test.ts`.
+
+### SEC-034 — Gateway identity is matched case-sensitively, so the same person can hold two accounts  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 16 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `apps/backend/src/middleware/requireAuth.ts`, `apps/backend/src/db/prisma/migrations/20260813150000_normalise_user_email_case/migration.sql`
+- **Why advisory:** Apps Gateway forwards whatever casing the identity provider sends. `User.email` is unique but case-sensitive, so `Nama@gdn-commerce.com` and `nama@gdn-commerce.com` are two rows — one person, two identities, and a role grant applied to one has no effect on the other. Confusing rather than exploitable, but it silently undermines every permission decision made about that person.
+- **Suggested fix:** Normalise the header before lookup and backfill existing rows.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `requireAuth` now type-checks the header, then trims and lowercases it before lookup. The migration lowercases existing rows and is deliberately **unguarded**: if two rows already differ only by case, it aborts on the unique index rather than silently picking a winner and destroying the other account's history — a failed migration that a human resolves is the correct outcome there. Covered in `requireAuth.test.ts`.
+
+### SEC-035 — Both container images run as root  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 13 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `Dockerfile`, `k8s/README.md`
+- **Why advisory:** No known escape today, but it removes a whole containment layer: any RCE in the Node process starts as uid 0 inside the container, and with a writable root filesystem it can persist.
+- **Suggested fix:** Run as a non-root user and declare a pod security context.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** The runtime stage now copies with `--chown=node:node` and drops to `USER node`; the uploads directory is created and chowned in the image so the non-root process can still write to it. `k8s/README.md` gained a required pod security context (`runAsNonRoot`, `runAsUser: 1000`, `seccompProfile`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, all capabilities dropped) plus the `emptyDir` + `sizeLimit` the uploads path needs once the root filesystem is read-only — which is also the interim disk-quota control noted under SEC-017. **Not verified by building:** there is no `docker` CLI in the environment this was authored in, so the Dockerfile change is reviewed-but-unbuilt and must be built once before it is relied on.
+
+### SEC-036 — CI ran with a writable token and never looked at dependency advisories  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 12 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `.github/workflows/ci.yml`, `.github/dependabot.yml`
+- **Why advisory:** Supply-chain hygiene rather than a live vulnerability — nothing in the workflow writes to the repository, yet the token could have; and a known-vulnerable transitive package could sit in the tree indefinitely with nothing reporting it.
+- **Suggested fix:** Scope the workflow token to read, add an advisory gate, and automate dependency updates.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Workflow-level `permissions: contents: read`, plus a separate `scan` job running `pnpm audit --audit-level=high`, plus a weekly npm / monthly github-actions `dependabot.yml`. Gated at `high`, not `moderate`, deliberately: the tree carries 4 moderate advisories today (all build tooling, all tracked here as DEP items) and a gate that is red on arrival gets ignored rather than acted on.
+  **Two parts of this finding remain OPEN and were not fixed:** static analysis (CodeQL) and secret scanning both require **GitHub Advanced Security**, which is not enabled for private repositories in this organisation. The usual third-party substitute does not help either — `gitleaks/gitleaks-action@v2` requires a paid `GITLEAKS_LICENSE` for organization accounts, and `gdncomm-ops` is an organization. Both need an org-owner/licensing decision, not a code change.

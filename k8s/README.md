@@ -60,3 +60,29 @@ of the subdomain and its access list is performed by DevOps at `/auth/ui/apps` �
 `PROJECT.md`'s Login Method section for the values to apply.
 
 Add concrete YAML (or a Helm chart / Kustomize base) here when a cluster target is chosen.
+
+## Pod security context (required when the YAML is written)
+
+Review Finding 13 was closed at the image level — the root `Dockerfile` now copies with
+`--chown=node:node` and ends with `USER node`, so the container no longer starts as uid 0.
+An image default is not an enforcement point, though: a manifest can override it with
+`runAsUser: 0`. Pin it at deploy time as well, on **both** Deployments:
+
+```yaml
+securityContext:                 # pod level
+  runAsNonRoot: true
+  runAsUser: 1000                # `node` in node:22-slim
+  seccompProfile: { type: RuntimeDefault }
+containers:
+  - name: app
+    securityContext:             # container level
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+```
+
+`readOnlyRootFilesystem: true` needs one writable mount on **this** repo's Deployment:
+`apps/backend/uploads`, which `adminUploads.routes.ts` writes to. Give it an `emptyDir` with
+a `sizeLimit` — that also closes the "no quota on the uploads directory" half of SEC-017,
+which is otherwise unbounded until Phase 6 moves the files to GCS. `bliblitalk-user-fe`
+writes nothing to disk and needs no such mount.

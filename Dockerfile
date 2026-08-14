@@ -19,6 +19,13 @@ RUN pnpm --filter @repo/frontend build
 
 FROM base AS run
 ENV NODE_ENV=production
-COPY --from=build-frontend /app .
+# Review Finding 13: the image ran as root, so a process compromise started with uid 0 and
+# every file in the image writable. `node` is a non-root uid the base image already ships.
+COPY --from=build-frontend --chown=node:node /app .
+# The backend writes uploaded images here (adminUploads.routes.ts resolves it from cwd), so
+# it has to exist and be owned by `node` before the process drops to that uid — a fresh
+# mkdir at runtime would fail once the tree is no longer writable by the running user.
+RUN mkdir -p /app/apps/backend/uploads && chown -R node:node /app/apps/backend/uploads
+USER node
 EXPOSE 4000
 CMD ["pnpm", "--filter", "@repo/backend", "start"]
