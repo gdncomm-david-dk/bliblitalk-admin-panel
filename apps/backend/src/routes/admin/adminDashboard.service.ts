@@ -1,5 +1,5 @@
 import type { AdminDashboardDTO, Role } from "@repo/shared-types";
-import { EventStatus, RegistrationStatus, Attendance } from "@repo/shared-types";
+import { EventStatus, RegistrationStatus, Attendance, SpeedDatingStatus } from "@repo/shared-types";
 import { isEventScoped } from "@repo/auth";
 import { prisma } from "../../db/client";
 
@@ -17,9 +17,12 @@ export async function getAdminDashboard(userId: string, role: Role): Promise<Adm
   const scoped = isEventScoped(role);
   const eventWhere = scoped ? { admins: { some: { id: userId } } } : {};
   const registrationWhere = scoped ? { event: { admins: { some: { id: userId } } } } : {};
-  const speedDatingWhere = scoped
-    ? { registration: { event: { admins: { some: { id: userId } } } } }
-    : {};
+  // SEC-035: a participant who left a session leaves a CANCELLED row behind rather than no row,
+  // because the portal's database role cannot DELETE. Counting those would overstate turnout.
+  const speedDatingWhere = {
+    status: { not: SpeedDatingStatus.CANCELLED },
+    ...(scoped ? { registration: { event: { admins: { some: { id: userId } } } } } : {}),
+  };
   const certificateWhere = scoped ? { event: { admins: { some: { id: userId } } } } : {};
 
   const [

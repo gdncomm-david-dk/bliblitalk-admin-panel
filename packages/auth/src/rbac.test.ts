@@ -23,6 +23,18 @@ describe("rbac", () => {
     expect(can(Role.HR_TA, Permission.EVENT_CREATE)).toBe(false);
   });
 
+  // SEC-030, owner decision 2026-08-14. Mass mail goes out from noreply@blibli.com to an
+  // audience that can be every participant, so the grant is narrower than the rest of the CMS.
+  it("only SUPER_ADMIN and EVENT_ADMIN may send marketing campaigns", () => {
+    expect(can(Role.SUPER_ADMIN, Permission.MARKETING_MANAGE)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.MARKETING_MANAGE)).toBe(true);
+    expect(can(Role.HR_TA, Permission.MARKETING_MANAGE)).toBe(false);
+    expect(can(Role.PARTICIPANT, Permission.MARKETING_MANAGE)).toBe(false);
+    // Losing marketing must not have cost Talent Acquisition its actual job.
+    expect(can(Role.HR_TA, Permission.PARTICIPANT_READ)).toBe(true);
+    expect(can(Role.HR_TA, Permission.REGISTRANT_EXPORT)).toBe(true);
+  });
+
   it("only SUPER_ADMIN can manage roles — that is the sole permission no other admin tier holds", () => {
     expect(can(Role.SUPER_ADMIN, Permission.ROLE_MANAGE)).toBe(true);
     expect(can(Role.EVENT_ADMIN, Permission.ROLE_MANAGE)).toBe(false);
