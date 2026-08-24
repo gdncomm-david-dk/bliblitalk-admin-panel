@@ -9,7 +9,7 @@ export default defineConfig({
       // Backend now owns the /api prefix itself (mounts at /api/public, /api/admin) —
       // forward as-is, no path rewrite.
       "/api": {
-        target: "http://localhost:4001",
+        target: process.env.CORS_ORIGIN || "*",
         changeOrigin: true,
       },
     },

@@ -12,6 +12,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 FROM base AS deps
 COPY . .
 RUN pnpm install --frozen-lockfile
+RUN npm rebuild @tailwindcss/oxide || true
 RUN pnpm --filter @repo/backend generate
 
 FROM deps AS build-frontend

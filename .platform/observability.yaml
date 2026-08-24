@@ -1,0 +1,19 @@
+version: 1
+
+# Metrics mode:
+# - probe  : deploy a blackbox-exporter sidecar and scrape /probe (works for any app/language)
+# - native : scrape the application endpoint directly (requires app to expose Prometheus metrics)
+metrics_mode: probe
+
+# Common settings
+metrics_enabled: true
+metrics_interval: 30s
+
+# Native metrics settings (metrics_mode: native)
+metrics_port_name: http
+metrics_path: /metrics
+
+# Probe settings (metrics_mode: probe)
+probe_path: /health
+# Optional: override probe port (useful for Spring management.server.port)
+probe_port: ""

@@ -1,3 +1,4 @@
+import _path from "path";
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import express from "express";
@@ -8,6 +9,13 @@ function buildTestApp() {
   const app = express();
   app.use(createSecurityHeaders());
   app.get("/probe", (_req, res) => res.json({ ok: true }));
+    // Auto-injected by DevOps Platform: Serve frontend static files
+  const frontendDist = _path.join(process.cwd(), "../frontend/dist");
+  app.use(express.static(frontendDist));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path === "/health") return next();
+    res.sendFile(_path.join(frontendDist, "index.html"));
+  });
   return app;
 }
 

@@ -10,7 +10,7 @@ export const config = {
   isProd: process.env.NODE_ENV === "production",
   port: Number(process.env.PORT ?? 4000),
   logLevel: process.env.LOG_LEVEL ?? "info",
-  adminFeOrigin: process.env.ADMIN_FE_ORIGIN ?? "http://localhost:5174",
+  adminFeOrigin: process.env.ADMIN_FE_ORIGIN ?? process.env.CORS_ORIGIN || "*",
   // The reminder/lifecycle schedulers must run in exactly one backend process — sweepDueReminders
   // has no idempotency guard, so running it in two processes double-sends every due reminder
   // email. Admin owns them by default; set ENABLE_SCHEDULERS=false there if that ever changes,
