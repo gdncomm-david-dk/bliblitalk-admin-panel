@@ -1,0 +1,10 @@
+version: 1
+
+# Optional CPU/memory overrides for the app container.
+# Heavy apps (e.g. poros-ai embeddings) should raise limits.
+requests:
+  cpu: "200m"
+  memory: "512Mi"
+limits:
+  cpu: "1000m"
+  memory: "2Gi"

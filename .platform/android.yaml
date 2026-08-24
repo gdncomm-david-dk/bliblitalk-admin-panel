@@ -1,0 +1,25 @@
+version: 1
+
+# enable to request android fleets during onboarding
+enabled: false
+
+# desired replica count (devices)
+replicas: 1
+
+# required when enabled: kubevirt containerDisk image reference
+imageRef: ""
+
+# optional
+gmsEnabled: false
+cpu: "2"
+memory: "4Gi"
+storage_size: "20Gi"
+storage_class_name: ""
+
+# optional apk install target
+apk_uri: ""
+apk_version: ""
+apk_sha256: ""
+
+whatsapp_personal_enabled: true
+whatsapp_business_enabled: false

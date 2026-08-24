@@ -1,0 +1,18 @@
+version: 1
+
+# mode:
+# - single : health bypass to app; everything else via apps-gateway (default)
+# - dual   : also expose api_path_prefix directly to the app (machine API),
+#            while browser console traffic still goes through apps-gateway
+mode: single
+
+api_path_prefix: /v1
+console_via_gateway: true
+
+# Extra anonymous bypass paths. FAS/Poros use /dangerously-skip-login/**.
+bypass_paths:
+  - /health
+  - /api/health
+  - /version
+  - /api/version
+  - /dangerously-skip-login
