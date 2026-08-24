@@ -1,0 +1,22 @@
+# Review Finding 12: the audit job in ci.yml catches a vulnerable dependency once it is
+# already in the tree. This is the other half — it opens the pull request that gets it out.
+#
+# Weekly rather than daily, and minor/patch updates grouped into one PR per ecosystem: a
+# stream of individual bumps is what makes teams stop reading them. Major versions stay
+# separate because they need a human to look at the changelog.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # The Actions in ci.yml are pinned by major tag; this keeps them current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

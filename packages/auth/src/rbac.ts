@@ -21,6 +21,13 @@ export const Permission = {
   USER_MANAGE: "user:manage",
   MARKETING_MANAGE: "marketing:manage",
   ROLE_MANAGE: "role:manage",
+  /**
+   * SEC-011: bulk export of participant contact PII. Split out from USER_MANAGE because
+   * reading a page of registrants to do your job and pulling the whole database into a
+   * spreadsheet are different acts with different blast radii — the first is routine, the
+   * second leaves the system entirely and cannot be recalled.
+   */
+  REGISTRANT_EXPORT: "registrant:export",
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -50,7 +57,13 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.PARTICIPANT_SHORTLIST,
     Permission.SPEEDDATING_MANAGE,
     Permission.USER_MANAGE,
-    Permission.MARKETING_MANAGE,
+    // SEC-030: MARKETING_MANAGE removed by owner decision (2026-08-14) — sending campaigns is
+    // limited to SUPER_ADMIN and EVENT_ADMIN. Talent Acquisition keeps every other grant,
+    // including the registrant export, so the only thing it loses is mass mail.
+    // Recruitment is the real user of the export, so this role keeps it. EVENT_ADMIN
+    // deliberately does not: it still reads the participants of its own events in the UI,
+    // it just cannot pull the whole registrant base out as a file (SEC-011).
+    Permission.REGISTRANT_EXPORT,
   ],
   [Role.PARTICIPANT]: [],
 };

@@ -8,7 +8,7 @@
 #   PUBLIC_APP_DB_PASSWORD - password to (re)set on the bliblitalk_public role
 #
 # Example (local dev):
-#   DATABASE_URL="postgresql://blibli:blibli@localhost:5432/blibli_talk_admin_split" \
+#   DATABASE_URL="postgresql://blibli:<db-password>@localhost:5432/blibli_talk_admin_split" \
 #   PUBLIC_APP_DB_PASSWORD="changeme-for-local-dev" \
 #   ./scripts/db/provision-public-role.sh
 

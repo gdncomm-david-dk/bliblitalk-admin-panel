@@ -74,10 +74,12 @@ export function SpeakerFormModal({ speaker, onClose, onSaved }: SpeakerFormModal
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="presentation"
+    >
       <div
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6"
-        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-bold text-ink">{speaker ? "Edit Speaker" : "Add Speaker"}</h2>
 

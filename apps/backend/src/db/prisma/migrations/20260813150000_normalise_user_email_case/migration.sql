@@ -1,0 +1,11 @@
+-- Review Finding 16 (Informational): account creation lowercases `User.email`, but the Apps
+-- Gateway lookup in requireAuth compared the forwarded header verbatim. requireAuth now
+-- lowercases too; this normalises rows written before that, so a legacy mixed-case row is
+-- still found once both ends agree on the same form.
+--
+-- Deliberately not guarded against collisions. If two rows differ only in case, the unique
+-- index on "User"."email" aborts this migration — which is the correct outcome: two accounts
+-- claiming one address is a data problem a person has to resolve, not something a migration
+-- should silently pick a winner for. Check with:
+--   SELECT lower(email), count(*) FROM "User" GROUP BY 1 HAVING count(*) > 1;
+UPDATE "User" SET "email" = lower("email") WHERE "email" <> lower("email");

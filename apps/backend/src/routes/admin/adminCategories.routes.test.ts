@@ -136,3 +136,58 @@ describe("admin categories CRUD", () => {
     expect(withInactive.body.some((c: { id: string }) => c.id === category.body.id)).toBe(true);
   });
 });
+
+// Review Finding 15: the category taxonomy is platform-wide, but every route was gated on
+// EVENT_UPDATE — which an EVENT_ADMIN holds for their own events. Renaming or deleting a
+// category reaches events they do not own, so writes now need SETTINGS_MANAGE while reads
+// stay on EVENT_UPDATE so the event form's category picker keeps working.
+describe("category management is platform-wide, not event-scoped", () => {
+  const app = createApp();
+  const asEventAdmin = () => request.agent(app).set("X-User-Id", "eventadmin@gdn-commerce.com");
+
+  afterAll(purgeSyntheticCategories);
+
+  it("still lets an event admin read the list, so they can pick a category", async () => {
+    const res = await asEventAdmin().get("/api/admin/categories");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it("refuses an event admin creating a category", async () => {
+    const res = await asEventAdmin()
+      .post("/api/admin/categories")
+      .send({ name: `${TEST_PREFIX}Unauthorised` });
+    expect(res.status).toBe(403);
+    // And nothing was written despite the 403.
+    const rows = await prisma.eventCategory.findMany({
+      where: { name: `${TEST_PREFIX}Unauthorised` },
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses an event admin renaming or deleting one a super admin owns", async () => {
+    const created = await prisma.eventCategory.create({
+      data: { name: `${TEST_PREFIX}Global Taxonomy` },
+    });
+
+    const patched = await asEventAdmin()
+      .patch(`/api/admin/categories/${created.id}`)
+      .send({ name: `${TEST_PREFIX}Renamed` });
+    expect(patched.status).toBe(403);
+
+    const deleted = await asEventAdmin().delete(`/api/admin/categories/${created.id}`);
+    expect(deleted.status).toBe(403);
+
+    const still = await prisma.eventCategory.findUnique({ where: { id: created.id } });
+    expect(still?.name).toBe(`${TEST_PREFIX}Global Taxonomy`);
+  });
+
+  it("still allows a super admin, so the capability moved rather than disappeared", async () => {
+    const res = await request
+      .agent(app)
+      .set("X-User-Id", "superadmin@gdn-commerce.com")
+      .post("/api/admin/categories")
+      .send({ name: `${TEST_PREFIX}Still Allowed` });
+    expect(res.status).toBe(201);
+  });
+});

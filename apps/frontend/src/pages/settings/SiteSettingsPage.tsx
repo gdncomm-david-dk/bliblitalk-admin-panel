@@ -55,7 +55,11 @@ const TABS = [
     icon: MessageSquareIcon,
     permission: Permission.SETTINGS_MANAGE,
   },
-  { key: "categories", label: "Categories", icon: FilterIcon, permission: Permission.EVENT_UPDATE },
+  // SETTINGS_MANAGE, matching the API: this tab is a write surface over a platform-wide
+  // taxonomy. An event admin still reads the category list — GET /admin/categories stays on
+  // EVENT_UPDATE so the combobox in the event form keeps loading — they just no longer get a
+  // page full of rename and delete buttons that the API would reject.
+  { key: "categories", label: "Categories", icon: FilterIcon, permission: Permission.SETTINGS_MANAGE },
   {
     key: "speed-dating",
     label: "Speed Dating",

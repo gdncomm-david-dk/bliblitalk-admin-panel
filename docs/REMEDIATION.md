@@ -10,7 +10,7 @@ pre-existing code: documented with a migration note, fixed during normal work, n
 gate — but new or modified code must comply immediately regardless of tier. Statuses may be
 edited by humans; IDs, waiver notes, and FIXED entries are never deleted, only appended to.
 
-Last audited: 2026-08-11 — Information Security review (external, human-led) at commit `738f155`. Its 9 Medium-and-above findings were re-verified against HEAD on 2026-08-12 and recorded as SEC-025…SEC-032 plus a re-tier of SEC-023; the review's 6 Low and 1 Informational findings are not yet transcribed. Earlier: 2026-07-24 agent audits, re-dispositioned 2026-08-06 after the Apps Gateway migration (see the dated Notes).
+Last audited: 2026-08-11 — Information Security review (external, human-led) at commit `738f155`. Its 9 Medium-and-above findings were re-verified against HEAD on 2026-08-12 and recorded as SEC-025…SEC-032 plus a re-tier of SEC-023. Its remaining 6 Low and 1 Informational findings were transcribed and fixed on 2026-08-14: Findings 15, 16, 13 and 12 as new entries SEC-033…SEC-036, and three that this backlog was already tracking under their existing IDs rather than new ones — SEC-012 (URL validation), SEC-017 (upload content-type, partially) and SEC-021 (certificate entropy). Two sub-parts remain OPEN by external constraint, both under SEC-036: CodeQL and secret scanning need GitHub Advanced Security, which is not enabled for private repositories in this organisation. Earlier: 2026-07-24 agent audits, re-dispositioned 2026-08-06 after the Apps Gateway migration (see the dated Notes).
 
 **Tiering note for the 2026-08-11 review (added 2026-08-12).** Findings from that review are tiered by **the reviewer's own severity** — `High` → BLOCKING, `Medium` → BLOCKING — not by the agent's judgement. The security team's instruction with the report was to verify first and focus on Medium and above. Per this backlog's standing rule, downgrading or waiving any of them requires a named Information Security sign-off recorded on the finding and in `PROJECT.md` Review Evidence; the agent does not reclassify them. Every entry below records what was re-verified against HEAD, so a reviewer can see which claims were checked rather than transcribed.
 
@@ -199,7 +199,9 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/backend/src/db/prisma/schema.prisma` (no `AuditLog` model); `apps/backend/src/routes/admin/adminUsers.service.ts`; `adminMarketing.service.ts`; `adminParticipants.routes.ts`; `apps/backend/src/middleware/requireAuth.ts`
 - **Why blocking:** Verified against HEAD 2026-08-12 — there is no `AuditLog` model, and `adminUsers.service.ts` and `adminMarketing.service.ts` contain **zero** `logger` references. Role grants, admin-account creation, employment-type changes, bulk registrant reads, campaign sends and participant decisions all mutate or expose sensitive state with no actor record, even though `requireAuth` resolves `req.userEmail` on every request. Authorization denials are equally invisible: `requirePermission`/`requireEventAccess` throw without logging and `errorHandler` logs only *unhandled* errors, so a scoped admin probing events they are not assigned to passes silently. Paired with SEC-025 this is the more serious half: an impersonated `SUPER_ADMIN` leaves no trace attributable to anyone.
 - **Suggested fix:** Add an `AuditLog` table written from every privileged mutation — actor id and email, action, target type and id, minimal diff, request correlation id, outcome. `EventStatusHistory` is the working model to copy. Priority order: role/employment changes and admin-account creation → campaign and reminder sends (counts, never addresses — see SEC-028) → bulk registrant reads and exports (which needs CSV generation moved server-side, a change SEC-026's fix can carry) → participant decisions. Separately log every authorization denial at `warn` and alert on repeats from one actor. **Subsumes SEC-018** (bulk email actor attribution), which is the narrowest slice of this.
-- **Status:** OPEN
+- **Status:** OPEN — **the table now exists and one of the four priorities is done (recorded 2026-08-14); the other three are not.**
+  - **Done:** the `AuditLog` model and the `recordAudit` helper (`apps/backend/src/lib/shared/auditLog.ts`) landed with SEC-011, and the third priority — *bulk registrant reads and exports* — is written from both export routes: `adminUsers.routes.ts` (`REGISTRANT_EXPORT`) and `adminParticipants.routes.ts` (`EVENT_PARTICIPANT_EXPORT`), each recording the actor, the target and the row count. As this entry predicted, that required moving CSV generation server-side first.
+  - **Not done, and this entry stays OPEN for them:** role/employment changes and admin-account creation (priority one, the most serious); campaign and reminder sends (priority two — still the open half of SEC-018); participant decisions (priority four). Authorization denials are still unlogged, so a scoped admin probing events they are not assigned to still passes silently.
 
 ### SEC-030 — `MARKETING_MANAGE` lets any event admin mass-email every user in the database  [OPEN]
 - **Source:** Information Security review, 2026-08-11 (Finding 7) — Medium severity, High confidence.
@@ -209,7 +211,9 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** Narrow the grant (move platform-wide `audience: "all"` to `SUPER_ADMIN`; give scoped roles a `MARKETING_SCOPED` permission limited to their own events' registrants, reusing the `registrations.some.event.admins.some` filter already in `adminUsers.service.ts`). Filter `syncContactsFromRegistrants` to `role: PARTICIPANT`. Add a recipient ceiling requiring second approval, a per-campaign idempotency key, a dedicated rate limit, and asynchronous sending. Sanitise `bodyHtml` against a formatting allowlist. Record marketing consent as its own field.
 - **Status:** OPEN — **one part fixed (2026-08-13); the rest needs a product decision.**
   - **Fixed:** `syncContactsFromRegistrants` now filters to `role: PARTICIPANT` (`adminMarketing.service.ts`), so staff accounts are no longer swept into the audience that `audience: "all"` blasts from `noreply@blibli.com` — the sub-issue where the tool's most valuable phishing targets sat inside its own recipient list. Covered by `adminMarketing.service.test.ts`, which seeds a participant, an event admin and a super admin and asserts only the participant is synced.
-  - **Still open, deliberately not decided here:** narrowing `MARKETING_MANAGE` / introducing `MARKETING_SCOPED` changes who can do their job and is the owner's call, not the agent's; likewise the recipient ceiling and second-approval step. `bodyHtml` sanitisation, the per-campaign idempotency key, the dedicated rate limit and async sending remain. Marketing consent still has no field, so the "registered ≠ consented" conflation stands.
+  - **Fixed (2026-08-13, recorded here 2026-08-14):** `bodyHtml` is now sanitised server-side against a formatting allowlist. That work was done under SEC-015 and is described in full there; it is noted here because this entry lists it as an outstanding sub-part. Every outbound campaign and reminder passes through one private `deliver()` chokepoint, so a future send path cannot route around it.
+  - **Fixed (2026-08-14, owner decision):** `MARKETING_MANAGE` now belongs to `SUPER_ADMIN` and `EVENT_ADMIN` only — the owner's instruction was that campaigns may be sent by those two roles and no others. `HR_TA` loses mass mail and keeps everything else it had, including `REGISTRANT_EXPORT`, so Talent Acquisition can still do its actual job. Covered by a new `rbac.test.ts` case asserting the grant for both permitted roles, its absence for `HR_TA` and `PARTICIPANT`, and that `HR_TA` kept `PARTICIPANT_READ` and `REGISTRANT_EXPORT`; and by a new `adminMarketing.routes.test.ts` asserting over real HTTP that `HR_TA` gets 403 on the marketing routes while `/admin/users` still returns 200, and that both superadmin and eventadmin get 200. Proven non-vacuous by temporarily restoring the grant to `HR_TA` (`expected true to be false`, `expected 200 to be 403`). That test file deliberately does not drive the send route — a test that mails real people is worse than the gap it covers.
+  - **Still open, and this entry does not close.** The owner's decision keeps `EVENT_ADMIN`, so the finding's *central* property survives: the marketing routes still have none of the event-scoping that constrains `EVENT_ADMIN` everywhere else, so a single-event admin can still send platform-wide to `audience: "all"`. The suggested `MARKETING_SCOPED` split was not taken. Also outstanding: the recipient ceiling and second-approval step, the per-campaign idempotency key, the dedicated rate limit, asynchronous sending, and a marketing-consent field — so "registered ≠ consented" still stands.
 
 ### SEC-031 — The public app's database role is granted table-wide `UPDATE` on `User` and `SELECT` on everything  [FIXED (2026-08-13)]
 - **Source:** Information Security review, 2026-08-11 (admin Finding 8 = `bliblitalk-user-fe` Finding 2 — one defect, reported from both sides) — Medium severity, High confidence.
@@ -253,21 +257,37 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Status:** OPEN
 - **Note (2026-08-06):** still OPEN, and slightly wider than the original wording suggests. The example role named above no longer exists — `VIEWER` was removed from the `Role` enum by owner decision — so read it as any admin lacking the permission a route needs. Concretely today: `HR_TA` can reach `/events/new` and `/roles` by typing the URL even though it holds neither `EVENT_CREATE` nor `ROLE_MANAGE`. The server-side verification above is unchanged and still correct, so this remains client-side-only and advisory.
 
-### SEC-011 — PII exposed unmasked in list views + ungated client-side CSV export  [OPEN]
+### SEC-011 — PII exposed unmasked in list views + ungated client-side CSV export  [FIXED (2026-08-14 — export half; masking declined by owner)]
 - **Source:** `code-review/audit-security` (frontend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/frontend/src/pages/registrants/RegistrantsPage.tsx:15-44,77-86,157-183`; `apps/frontend/src/pages/events/workspace/ParticipantsTab.tsx:17-54,340-346`
 - **Why advisory:** Full unmasked email/phone/department/position/YoE in list views, with a client-side CSV export requiring no privilege beyond page-browse and producing no audit trail.
 - **Suggested fix:** If bulk export must stay self-service, add a distinct export permission and have the backend audit-log the export (actor, row count, timestamp).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14 — export half; masking declined by owner)
+- **Note (2026-08-14):** The finding has two halves and they were answered differently, on the owner's decision of 2026-08-14.
 
-### SEC-012 — URL-typed content fields lack `.url()` validation  [OPEN]
+  **Export — fixed, exactly as suggested.** Both CSVs were built in the browser, which is what made them ungateable and unrecordable; a client-side check would have been cosmetic (that is SEC-010). They now come from the API:
+  - `GET /admin/users/export?search=` → `exportRegistrants` + `registrantCsv` (`adminUsers.service.ts`)
+  - `GET /admin/events/:id/registrations/export` → `participantCsv` (`adminParticipants.service.ts`)
+
+  Both gate on a **new** permission `Permission.REGISTRANT_EXPORT` (`registrant:export`), held by **SUPER_ADMIN and HR_TA only**. `EVENT_ADMIN` deliberately loses bulk export while keeping `PARTICIPANT_READ`/`USER_MANAGE` — it still works its own events' participant list on screen, it just cannot take a copy away. The per-event route additionally keeps `requireEventAccess`, so the new permission is not a way around event scoping.
+
+  Each export writes an audit row to the new `AuditLog` table (migration `20260814090000_audit_log`) — actor id/email/role, row count, target, and for the registrant export the search filter used and whether the 10 000-row cap truncated it. `AuditLog` has no FK to `User` (an audit row a cascade can delete is not an audit row) and needs no grant for `bliblitalk_public`, because SEC-031 removed the blanket default-SELECT.
+
+  Two side effects worth recording: the registrant export now covers **every** matching row rather than the page on screen (the old client version silently exported one page), and the per-event export now covers every participant on the event rather than the client-side filtered view — those filters are UI-only and duplicating them server-side would mean two copies of the same predicate drifting apart. The button says "Export All" and carries a tooltip.
+
+  Covered by 7 tests: `rbac.test.ts` (the permission split), `adminUsers.routes.test.ts` (auth, event-admin refused while its list still loads, CSV + audit row, search applied and recorded), `adminParticipants.routes.test.ts` (auth, event-admin refused *while assigned to the event*, CSV + audit row, event scope still enforced). Proved non-vacuous: swapping the gate to `USER_MANAGE` fails both refusal tests with `expected 200 to be 403`.
+
+  **Masking — declined, by owner decision (2026-08-14).** The list views keep showing full email/phone/department/position/YoE. The reasoning recorded by the owner: this is the internal recruitment CMS behind the Apps Gateway, the audience is Talent Acquisition and event staff, and contacting these people *is* the job — masked columns would be un-masked on every row, adding friction without removing the data. Gating the copy that leaves the system is the control that matters. This is a product decision, not an InfoSec waiver; if InfoSec disagrees, the masking half reopens on its own.
+
+### SEC-012 — URL-typed content fields lack `.url()` validation  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (frontend/shared), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `packages/shared-types/src/schemas.ts:200-201,230-232,380-381,403-406` (`bannerUrl`, `thumbnailUrl`, `recordingUrl`, `presentationUrl`, `galleryImages`)
 - **Why advisory:** Bare `z.string()` with no format constraint. Limited exploitability (React sets `bannerUrl` as a CSS property value, not a raw attribute — cannot break out into script), but nothing stops an admin from pointing these at arbitrary non-URL/attacker-controlled values.
 - **Suggested fix:** Add `.url()` to these schema fields so the shared contract rejects non-URL values server-side.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Fixed with a shared `SafeUrl` refinement in `packages/shared-types/src/schemas.ts`, not with `.url()`. `.url()` was the wrong tool twice over: it **accepts** `javascript:` and `data:` (they are valid URLs), and it **rejects** the relative paths these fields legitimately hold (`/uploads/...` from the upload endpoint). `SafeUrl` allows only an `http(s)://` absolute URL or a path starting with a single `/`, caps length at 2048, and permits `""` so clearing a form field still validates. The single-slash rule is load-bearing: the reviewer's own suggested `v.startsWith("/")` test would have accepted `//evil.example`, which a browser reads as protocol-relative and fetches off-site. Applied to `bannerUrl`, `thumbnailUrl`, `posterUrl`, `mapsUrl`, `recordingUrl`, `presentationUrl`, `galleryImages` (per item), `CreateSpeakerInput.avatarUrl`, and `LoginCarouselSlideDTO.imageUrl`. Covered by 10 tests in `schemas.test.ts`. Mirrored into `bliblitalk-user-fe`, closing its SEC-003 (the client-side half is `apps/frontend/src/lib/safeExternalUrl.ts` there).
 
 ### SEC-013 — `VITE_PORTAL_BASE_URL` silently falls back to plaintext localhost  [OPEN]
 - **Source:** `code-review/audit-security` (frontend), should-fix
@@ -285,13 +305,20 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** Have the Express backend or reverse proxy set a CSP response header for the SPA shell.
 - **Status:** FIXED (2026-08-13) — **subsumed by SEC-032 (2026-08-12)**, which covered the whole missing header set (nosniff, frame-ancestors, Referrer-Policy, `x-powered-by`) at BLOCKING tier and was fixed on 2026-08-13; the CSP this finding asked for is a response header from Express, not a `<meta>` tag in `index.html`. Kept for history per this backlog's no-delete rule.
 
-### SEC-015 — Outbound marketing/reminder HTML email content is not sanitized before send  [OPEN]
+### SEC-015 — Outbound marketing/reminder HTML email content is not sanitized before send  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (frontend + backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/frontend/src/pages/marketing/MarketingEmailPage.tsx:222-229`, `apps/frontend/src/pages/events/workspace/RemindersTab.tsx:143-149,167-173`, `apps/backend/src/lib/shared/mailer.ts` (confirmed: no sanitizer/escaping call anywhere in the mailer)
 - **Why advisory:** Content is admin-authored (not attacker-controlled untrusted input), so this is a stored-content/accidental-markup risk for real participant recipients rather than an active XSS path — but confirmed genuinely unsanitized end-to-end.
 - **Suggested fix:** Sanitize/allow-list outbound HTML server-side before send (e.g. `sanitize-html` with a restrictive tag/attribute allowlist) in `mailer.ts` or at the point campaigns/reminders are composed.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Fixed with `sanitize-html@2.17.7` (MIT, apostrophecms — name and publisher verified on the registry before install, pinned exact, lockfile committed) behind a new `apps/backend/src/lib/shared/emailHtml.ts` → `sanitizeEmailHtml()`.
+
+  Sanitising in `mailer.ts` rather than at each compose site was deliberate: it is the one place every outbound message passes through, so a future sender cannot forget. To make that structural rather than a convention, the actual send moved into a **private** `deliver(to, subject, safeHtml)`; the only exported paths are `sendEmail` and `sendBulkEmail`, both of which sanitise first. `sendBulkEmail` sanitises **once** for the whole batch instead of per recipient — re-parsing the same campaign body for thousands of addresses is pure waste.
+
+  The allowlist looks dated on purpose and the file says why: HTML email has no flexbox and no external stylesheets, so layout tables, `<center>`, `<font>` and inline `style` are how real campaigns are built. What it removes is the part that can reach a recipient's mail client: `<script>`/`<style>`/`<iframe>`/`<object>`/`<form>` (with `nonTextTags` so the *body* of a script tag goes too, not just its tags), every `on*` handler, `javascript:` and `data:` URLs, protocol-relative `//evil.example` (`allowProtocolRelative: false`), and any CSS property outside a bounded allowlist. `cid:` is permitted on `<img>` only, for inline attachments.
+
+  Covered by 19 tests: 15 in `emailHtml.test.ts` split into "strips what must never reach a recipient" and "keeps what a real campaign is made of" (ordinary formatting passes through byte-identical; the sanitizer is idempotent), plus 4 in `mailer.test.ts` proving the sanitizer is *wired in* rather than merely present — these assert on what `nodemailer.sendMail` actually received, including every recipient of a bulk send, not just the first. Proved non-vacuous: reverting `mailer.ts` to send raw HTML fails 3 of the 4 with the exact expected messages.
 
 ### SEC-016 — No idle/inactivity timeout on sessions  [FIXED (2026-08-06 — moot, this app holds no session)]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -299,7 +326,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/backend/src/routes/auth/auth.routes.ts:14-20` (moved from `apps/backend/src/routes/public/auth/auth.routes.ts:13-19` — `routes/public/auth/` is now an empty leftover directory from the 2026-08 repo split; same fixed 7-day `maxAge`, still no idle timeout, so this finding remains genuinely open, just at the new path)
 - **Why advisory:** Fixed 7-day cookie/JWT life regardless of activity — a session used once and abandoned is equally valid as one used continuously.
 - **Suggested fix:** Add a sliding idle timeout (re-issue on activity with a shorter absolute window, or track last-seen server-side).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — moot, see the note below)
 - **Note (2026-08-06):** Moot in this repo since the Apps Gateway migration: the app holds no session, so there is no cookie lifetime for it to shorten. Session lifetime and idle policy are the gateway's now, set centrally at `/auth/ui/apps` rather than per app. The equivalent finding remains genuinely open in `bliblitalk-user-fe`, which issues its own 7-day participant sessions.
 
 ### SEC-017 — Upload MIME validation checks the client-supplied header only  [OPEN]
@@ -308,7 +335,9 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/backend/src/routes/admin/adminUploads.routes.ts:13-36`
 - **Why advisory:** Validated only against `file.mimetype` (client-controlled header), never actual file bytes/magic numbers. Requires `EVENT_UPDATE` permission to reach.
 - **Suggested fix:** Add a magic-byte sniff (e.g. the `file-type` package) in `fileFilter` before accepting the upload.
-- **Status:** OPEN
+- **Status:** OPEN — content-type half FIXED (2026-08-14); storage-location and quota halves remain
+- **Note (2026-08-14) — partially fixed.** The finding as written (trusting `file.mimetype`) is closed. `adminUploads.routes.ts` now buffers through `multer.memoryStorage()`, sniffs the real magic bytes with the new `lib/shared/imageType.ts`, and only then writes to disk; the stored extension comes from the sniffed type, never from the client's filename, and the filename itself is `randomBytes(16).toString("hex")` so an uploader cannot choose or guess a path. `limits: { fileSize: 5MB, files: 1 }` bounds a single request. No new dependency: `file-type` is ESM-only and would not import into this CJS backend, and only four signatures are needed (PNG, JPEG, GIF87a/89a, RIFF+WEBP), so they are hand-written and unit-tested in `imageType.test.ts`.
+  **Still open, deliberately:** (a) the uploads directory is served without authentication, and (b) there is no disk quota — a legitimate admin can fill the volume 5MB at a time. Both are properties of local-disk storage, which Phase 6 replaces with Google Cloud Storage; fixing them in place would be work thrown away. `k8s/README.md` now specifies the interim control (an `emptyDir` with an explicit `sizeLimit`, since `readOnlyRootFilesystem: true` otherwise blocks writes entirely).
 
 ### SEC-018 — Bulk email sends have no actor attribution  [OPEN]
 - **Source:** `code-review/audit-security` (backend), should-fix
@@ -324,7 +353,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `packages/shared-types/src/schemas.ts:37-41` (`RegisterInput`), `:732-741` (`CreateAdminUserInput`)
 - **Why advisory:** 8-character minimum, no complexity rule, for accounts (including SUPER_ADMIN-provisioned staff) that reach real PII platform-wide.
 - **Suggested fix:** Raise the admin-account minimum (12+ chars) and/or add a complexity or breached-password check, at minimum for `CreateAdminUserInput`.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — moot, see the note below)
 - **Note (2026-08-06):** Moot: there is no password policy to strengthen because there are no passwords. `CreateAdminUserInput.password` was deleted and `createAdminUser` no longer writes `passwordHash` — provisioning a staff member now only attaches an Admin CMS role to their email, and Apps Gateway authenticates them with their company account. `RegisterInput`'s password field had already gone with the participant email-OTP change (2026-08-04).
 
 ### SEC-020 — JWT verification has no explicit algorithm allowlist  [FIXED (2026-07-24)]
@@ -337,21 +366,23 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Note (2026-08-03):** The cited location above (`apps/backend/src/routes/public/auth/auth.service.ts:17-24`) is stale — `auth.service.ts` moved (per the internal shared-infra reorganization) from `apps/backend/src/routes/public/auth/` to `apps/backend/src/lib/shared/auth.service.ts`. Confirmed the `verifyToken` function with `{ algorithms: ["HS256"] }` sits at the exact same line numbers, 17-24, just under the new path. The fix itself is unaffected — only the location citation was stale.
 - **Note (2026-08-06):** The code this finding covers no longer exists here: `signToken`/`verifyToken` were deleted from `apps/backend/src/lib/shared/auth.service.ts` with the Apps Gateway migration, leaving only `toUserDTO`. Coverage moved rather than lapsed — the identical `{ algorithms: ["HS256"] }` pin and its regression test (sign with HS384, assert rejection) live in `bliblitalk-user-fe/apps/backend/src/lib/shared/auth.service.ts` and its test file, which is where tokens are still verified. Confirmed present there before this repo's copy was deleted.
 
-### SEC-021 — Certificate verification code has low entropy (32 bits)  [OPEN]
+### SEC-021 — Certificate verification code has low entropy (32 bits)  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/backend/src/lib/shared/certificateCode.ts:1-5`
 - **Why advisory:** `randomBytes(4)` → 32 bits. Not exploitable today (confirmed: no public endpoint accepts this code as a lookup key; display-only on the PDF) — documented constraint for any future "verify my certificate" endpoint.
 - **Suggested fix:** Widen to `randomBytes(16)`+ before any public verification endpoint is built, or document the constraint explicitly.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `randomBytes(4)` → `randomBytes(16)` (32 → 128 bits), encoded as 26 Crockford base32 characters read as a bit stream so no entropy is lost to rounding. Crockford rather than hex because it is a third shorter at the same entropy and omits the characters people misread off a printed certificate (I and L are not in the alphabet; O and U are excluded so they cannot be confused with 0 and V). Measured before changing a printed artefact: at 16px Helvetica-Bold the longer ID line is 315pt inside a 716pt content width, against 371pt for the recognition line already above it — so it still fits on one line. Already-issued codes keep their old shape and stay valid: nothing re-issues them, `verificationCode` is only ever compared for equality, and `@unique` holds across both lengths. The `BT2-CERT-` prefix is unchanged — `adminCertificates.routes.test.ts` asserts on it, and that assertion was right. `bliblitalk-user-fe` carries a byte-identical copy of `certificateCode.ts` that is **not** in the `pnpm sync:admin` manifest, so both were edited by hand; a future change must do the same or the two apps start minting different code shapes into the same table.
 
-### DEP-004 — vite 5.4.21: 3 non-critical OSV advisories (devDependency)  [OPEN]
+### DEP-004 — vite 5.4.21: 3 non-critical OSV advisories (devDependency)  [FIXED (2026-08-14)]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
 - **Tier rule matched:** `other-vuln` → ADVISORY
 - **Location:** `apps/frontend` (devDependency) — GHSA-fx2h-pf6j-xcff (High), GHSA-4w7w-66w2-5vf9 (Medium), GHSA-v6wh-96g9-6wx3 (Medium, Windows-specific)
 - **Why advisory:** Dev-tooling only, not shipped in the production bundle; no known active exploitation.
 - **Suggested fix:** Upgrade `vite` to ≥6.4.3 in `apps/frontend` (major version bump — plan and test the Vite 6 migration).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Resolved via a `pnpm.overrides` pin in the root `package.json` rather than by editing `apps/frontend`'s own range, so the whole tree (including transitives) moves together. **The realised jump is larger than this finding asked for: 5.4.21 → 8.2.1, three majors, not one.** That was not the intent — the override was first written as `">=6.4.3"`, and an open-ended range resolves to the newest published major. It has since been pinned to the exact version, along with the other four overrides (`brace-expansion` 5.0.9, `ip-address` 10.5.0, `js-yaml` 5.2.3, `nanoid` 6.0.1); before pinning, `ip-address` had already drifted to different versions in the two repos (10.5.0 here, 10.4.0 in `bliblitalk-user-fe`) across two installs, which is exactly the reproducibility hazard the pin removes. Verified on 8.2.1: `pnpm typecheck`, `pnpm lint`, `pnpm test` and a forced (uncached) `pnpm build` all pass in both repos, and `pnpm audit --audit-level=high` is clean. Vite 8 uses the Rolldown bundler, so **the built asset pipeline is materially different from what was reviewed** — this warrants a look during PR review even though the build and tests are green.
 
 ### DEP-005 — react-router / react-router-dom 6.30.4: 3 non-critical OSV advisories (production dependency)  [OPEN]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
@@ -361,13 +392,13 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** Plan the react-router v6→v7 migration (breaking), or apply and document compensating controls (validate/allowlist all redirect targets; no user-controlled `useNavigate`/`<Link to>` values) as an interim risk acceptance.
 - **Status:** OPEN
 
-### DEP-006 — esbuild 0.21.5: dev-server request-origin advisory (transitive, dev-only)  [OPEN]
+### DEP-006 — esbuild 0.21.5: dev-server request-origin advisory (transitive, dev-only)  [FIXED (2026-08-14)]
 - **Source:** `scan-dependency/scan-deps`, other-vuln
 - **Tier rule matched:** `other-vuln` → ADVISORY
 - **Location:** transitive of `apps/frontend`'s `vite@5.4.21` (devDependency) — GHSA-67mh-4wv8-2f99
 - **Why advisory:** Dev-server-only exposure; resolved incidentally by the DEP-004 vite upgrade.
 - **Suggested fix:** Resolved by bumping `vite` per DEP-004.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14) — as predicted, carried by the DEP-004 vite pin; `esbuild@0.21.5` is no longer in the tree.
 
 ### DEP-007 — eslint 8.57.1 is registry-flagged deprecated across every workspace  [OPEN]
 - **Source:** `scan-dependency/scan-deps`, should-fix (dependency hygiene)
@@ -463,7 +494,7 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Location:** `apps/frontend/src/pages/LoginPage.tsx:151-155` — `Demo: superadmin@gdn-commerce.com / password123`, wrapped in `{import.meta.env.DEV && (...)}`
 - **Why advisory:** Verified stripped from the production bundle (`vite build`, matching the SEC-001/002 fix's own verification) — not reachable outside local dev. It is still a literal credential string in source, and it is only accurate because this repo's gitignored `apps/backend/.env` happens to still set `SEED_ADMIN_PASSWORD=password123` (the committed `.env.example` documents a different placeholder, `changeme-for-local-dev`) — so the hint is real today but will silently go stale for anyone who rotates their local `SEED_ADMIN_PASSWORD`.
 - **Suggested fix:** Either remove the literal and point to `.env.example`'s documented variable name instead of a value, or accept as-is (dev-only UX convenience) with a comment noting it must track whatever `SEED_ADMIN_PASSWORD` is locally set to.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-06 — see the note below)
 - **Note (2026-08-06):** Resolved by deletion rather than by editing the hint. `apps/frontend/src/pages/LoginPage.tsx` no longer exists — the whole password login surface went with the Apps Gateway migration. Its replacement, `DevLoginPage.tsx`, lists seeded admin *emails* only and verifies nothing, because there is no credential to hint at; `SEED_ADMIN_PASSWORD` itself has also been removed (see SEC-004). Verified absent from the production bundle.
 
 ### SEC-023 — Rate limiter's in-memory store won't scale across multiple replicas  [OPEN]
@@ -475,3 +506,40 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Status:** OPEN
 - **Note (2026-08-12) — re-tiered ADVISORY → BLOCKING by external review.** The Information Security review of 2026-08-11 records this same defect as its Finding 9 (Medium severity, Medium confidence) and adds a second dimension the original entry did not cover: `app.ts:45` sets `trust proxy 1`, so `req.ip` is taken as the second-to-last `X-Forwarded-For` entry — a hop count that **cannot be verified from this repo**, because no Ingress/Service manifest exists and `docker-compose.yml` publishes the port with no proxy at all. With zero real hops a client sets `X-Forwarded-For` freely and gets a fresh bucket per request, removing the limit entirely; with two, every request buckets under the intermediate proxy and all users share one counter, which is a self-inflicted denial of service. Verified against HEAD 2026-08-12: in-memory store, `limit: 600` / 15 min, `trust proxy 1`, and `k8s/README.md:40` still specifies `2+ replicas`. Per this backlog's rule that only a named Information Security sign-off may waive or downgrade, the tier now follows the external review's severity; reclassifying it back to ADVISORY is InfoSec's call, not the agent's. Extended fix: move the limiter to a shared store (`rate-limit-redis`), **and** make the hop count verifiable — commit the real Ingress/Service manifests and assert the resolved `req.ip` in a startup log line so a wrong `trust proxy` value is visible in an environment instead of silently changing behaviour.
 - **Status:** OPEN (BLOCKING as of 2026-08-12)
+
+### SEC-033 — Category CRUD is gated on `EVENT_UPDATE`, so any event admin can rewrite the platform-wide taxonomy  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 15 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `apps/backend/src/routes/admin/adminCategories.routes.ts`, `apps/frontend/src/pages/settings/SiteSettingsPage.tsx`
+- **Why advisory:** Not a privilege escalation and not a data-disclosure path — every role that reaches these routes is already staff. The defect is blast radius: `EVENT_UPDATE` is the permission an event admin needs to edit *their own* event, and it was also letting them rename or delete a category every other event in the system is filed under.
+- **Suggested fix:** Move the mutating routes to a settings-scoped permission.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `POST`/`PATCH`/`DELETE` now require `SETTINGS_MANAGE`. `GET` deliberately stays on `EVENT_UPDATE` — an event admin must still read the category list to file their own event, and taking that away would break the event form for the role that uses it most. The admin UI's Categories tab moved to the same permission so the tab is not offered to someone who would be refused on submit. Covered in `adminCategories.routes.test.ts`.
+
+### SEC-034 — Gateway identity is matched case-sensitively, so the same person can hold two accounts  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 16 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `apps/backend/src/middleware/requireAuth.ts`, `apps/backend/src/db/prisma/migrations/20260813150000_normalise_user_email_case/migration.sql`
+- **Why advisory:** Apps Gateway forwards whatever casing the identity provider sends. `User.email` is unique but case-sensitive, so `Nama@gdn-commerce.com` and `nama@gdn-commerce.com` are two rows — one person, two identities, and a role grant applied to one has no effect on the other. Confusing rather than exploitable, but it silently undermines every permission decision made about that person.
+- **Suggested fix:** Normalise the header before lookup and backfill existing rows.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** `requireAuth` now type-checks the header, then trims and lowercases it before lookup. The migration lowercases existing rows and is deliberately **unguarded**: if two rows already differ only by case, it aborts on the unique index rather than silently picking a winner and destroying the other account's history — a failed migration that a human resolves is the correct outcome there. Covered in `requireAuth.test.ts`.
+
+### SEC-035 — Both container images run as root  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 13 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `Dockerfile`, `k8s/README.md`
+- **Why advisory:** No known escape today, but it removes a whole containment layer: any RCE in the Node process starts as uid 0 inside the container, and with a writable root filesystem it can persist.
+- **Suggested fix:** Run as a non-root user and declare a pod security context.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** The runtime stage now copies with `--chown=node:node` and drops to `USER node`; the uploads directory is created and chowned in the image so the non-root process can still write to it. `k8s/README.md` gained a required pod security context (`runAsNonRoot`, `runAsUser: 1000`, `seccompProfile`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, all capabilities dropped) plus the `emptyDir` + `sizeLimit` the uploads path needs once the root filesystem is read-only — which is also the interim disk-quota control noted under SEC-017. **Not verified by building:** there is no `docker` CLI in the environment this was authored in, so the Dockerfile change is reviewed-but-unbuilt and must be built once before it is relied on.
+
+### SEC-036 — CI ran with a writable token and never looked at dependency advisories  [FIXED (2026-08-14)]
+- **Source:** Information Security review 2026-08-11, Finding 12 (Low)
+- **Tier rule matched:** `low` → ADVISORY
+- **Location:** `.github/workflows/ci.yml`, `.github/dependabot.yml`
+- **Why advisory:** Supply-chain hygiene rather than a live vulnerability — nothing in the workflow writes to the repository, yet the token could have; and a known-vulnerable transitive package could sit in the tree indefinitely with nothing reporting it.
+- **Suggested fix:** Scope the workflow token to read, add an advisory gate, and automate dependency updates.
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Workflow-level `permissions: contents: read`, plus a separate `scan` job running `pnpm audit --audit-level=high`, plus a weekly npm / monthly github-actions `dependabot.yml`. Gated at `high`, not `moderate`, deliberately: the tree carries 4 moderate advisories today (all build tooling, all tracked here as DEP items) and a gate that is red on arrival gets ignored rather than acted on.
+  **Two parts of this finding remain OPEN and were not fixed:** static analysis (CodeQL) and secret scanning both require **GitHub Advanced Security**, which is not enabled for private repositories in this organisation. The usual third-party substitute does not help either — `gitleaks/gitleaks-action@v2` requires a paid `GITLEAKS_LICENSE` for organization accounts, and `gdncomm-ops` is an organization. Both need an org-owner/licensing decision, not a code change.

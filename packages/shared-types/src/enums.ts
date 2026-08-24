@@ -53,3 +53,22 @@ export const EmploymentType = {
   EXTERNAL: "EXTERNAL",
 } as const;
 export type EmploymentType = (typeof EmploymentType)[keyof typeof EmploymentType];
+
+/**
+ * Speed-dating opt-in state.
+ *
+ * Unlike everything above this is NOT a Postgres enum — `SpeedDatingRegistration.status` is a
+ * plain `String` column — so this const is the only place the vocabulary is written down. Kept
+ * here anyway so both apps agree on the spelling.
+ *
+ * CANCELLED exists because leaving a session cannot delete the row: `bliblitalk_public`, the
+ * role the participant portal connects as, holds no DELETE on any table by design (SEC-028 /
+ * SEC-031). Opting out is therefore an UPDATE to this column, and every reader must treat a
+ * CANCELLED row as "not joined" rather than as a participant.
+ */
+export const SpeedDatingStatus = {
+  PENDING: "PENDING",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type SpeedDatingStatus = (typeof SpeedDatingStatus)[keyof typeof SpeedDatingStatus];

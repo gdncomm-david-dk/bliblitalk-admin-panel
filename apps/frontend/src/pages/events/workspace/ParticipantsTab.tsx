@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import type { AdminRegistrationDTO } from "@repo/shared-types";
-import { toCsv } from "@repo/shared-utils";
+import { can, Permission } from "@repo/auth";
 import { api, ApiRequestError } from "../../../services/api";
+import { useAuthStore } from "../../../store/authStore";
 import {
   CheckIcon,
   DownloadIcon,
@@ -15,41 +16,10 @@ import {
   TrashIcon,
 } from "../../../components/icons";
 
-function downloadCsv(rows: AdminRegistrationDTO[]) {
-  const csv = toCsv(
-    [
-      "Name",
-      "Email",
-      "Company",
-      "Job Title",
-      "YoE",
-      "Status",
-      "Attendance",
-      "Feedback",
-      "Registered",
-      "Certificate",
-    ],
-    rows.map((r) => [
-      r.userName,
-      r.userEmail,
-      r.userDepartment ?? "",
-      r.userPosition ?? "",
-      r.userYearsOfExperience ?? "",
-      r.status,
-      r.attendance,
-      r.feedbackSubmitted ? "Yes" : "No",
-      dayjs(r.createdAt).format("YYYY-MM-DD"),
-      r.certificateCode ?? "",
-    ]),
-  );
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "participants.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// SEC-011: the CSV builder that used to live here now lives in the API
+// (`adminParticipants.service.ts` → `participantCsv`). Built in the browser it could be neither
+// gated nor recorded, and the file is a full list of participant names, emails, employers and
+// job titles. The column set and formatting are unchanged.
 
 const STATUS_OPTIONS = ["REGISTERED", "WAITING", "SHORTLISTED", "REJECTED", "CANCELLED"] as const;
 const ATTENDANCE_OPTIONS = ["PENDING", "PRESENT", "ABSENT"] as const;
@@ -123,7 +93,13 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [viewing, setViewing] = useState<AdminRegistrationDTO | null>(null);
+
+  // SEC-011: hiding the button is UX only — the route refuses the request regardless, which is
+  // the actual boundary (client-side gating on its own is SEC-010).
+  const role = useAuthStore((s) => s.user?.role);
+  const canExport = role ? can(role, Permission.REGISTRANT_EXPORT) : false;
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -148,7 +124,7 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
   useEffect(load, [eventId]);
 
   const companies = useMemo(
-    () => Array.from(new Set((registrations ?? []).map((r) => r.userDepartment).filter(Boolean) as string[])).sort(),
+    () => Array.from(new Set((registrations ?? []).map((r) => r.userDepartment).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
     [registrations],
   );
 
@@ -232,6 +208,33 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
       setSelected(new Set());
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * SEC-011: the file is built by the API, which is what makes it gateable
+   * (`registrant:export`) and auditable.
+   *
+   * Behaviour change worth knowing: this exports every participant on the event, not the rows
+   * left after the on-screen filters. Those filters are client-side only, and re-implementing
+   * them server-side would mean two copies of the same predicate drifting apart.
+   */
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      const csv = await api.getText(`/admin/events/${eventId}/registrations/export`);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `participants-${dayjs().format("YYYY-MM-DD")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.apiError.message : "Failed to export participants.");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -335,13 +338,16 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
           >
             <CheckIcon width={14} height={14} /> Mark Present
           </button>
-          <button
-            disabled={!registrations || registrations.length === 0}
-            onClick={() => registrations && downloadCsv(filtered)}
-            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-muted shadow-sm ring-1 ring-line transition-colors hover:bg-surface disabled:opacity-40"
-          >
-            <DownloadIcon width={14} height={14} /> Export
-          </button>
+          {canExport && (
+            <button
+              disabled={!registrations || registrations.length === 0 || exporting}
+              onClick={exportCsv}
+              title="Exports every participant on this event, ignoring the filters above."
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-muted shadow-sm ring-1 ring-line transition-colors hover:bg-surface disabled:opacity-40"
+            >
+              <DownloadIcon width={14} height={14} /> {exporting ? "Exporting…" : "Export All"}
+            </button>
+          )}
           <button
             disabled={selected.size === 0}
             onClick={emailSelected}
@@ -683,11 +689,12 @@ function ParticipantModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="presentation"
     >
       <div
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-soft"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
           {r.userAvatarUrl ? (

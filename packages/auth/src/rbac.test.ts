@@ -23,10 +23,34 @@ describe("rbac", () => {
     expect(can(Role.HR_TA, Permission.EVENT_CREATE)).toBe(false);
   });
 
+  // SEC-030, owner decision 2026-08-14. Mass mail goes out from noreply@blibli.com to an
+  // audience that can be every participant, so the grant is narrower than the rest of the CMS.
+  it("only SUPER_ADMIN and EVENT_ADMIN may send marketing campaigns", () => {
+    expect(can(Role.SUPER_ADMIN, Permission.MARKETING_MANAGE)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.MARKETING_MANAGE)).toBe(true);
+    expect(can(Role.HR_TA, Permission.MARKETING_MANAGE)).toBe(false);
+    expect(can(Role.PARTICIPANT, Permission.MARKETING_MANAGE)).toBe(false);
+    // Losing marketing must not have cost Talent Acquisition its actual job.
+    expect(can(Role.HR_TA, Permission.PARTICIPANT_READ)).toBe(true);
+    expect(can(Role.HR_TA, Permission.REGISTRANT_EXPORT)).toBe(true);
+  });
+
   it("only SUPER_ADMIN can manage roles — that is the sole permission no other admin tier holds", () => {
     expect(can(Role.SUPER_ADMIN, Permission.ROLE_MANAGE)).toBe(true);
     expect(can(Role.EVENT_ADMIN, Permission.ROLE_MANAGE)).toBe(false);
     expect(can(Role.HR_TA, Permission.ROLE_MANAGE)).toBe(false);
+  });
+
+  // SEC-011. The split is the whole point of the permission: an EVENT_ADMIN still reads its own
+  // events' participants on screen, but cannot take a copy of everyone's contact details away.
+  it("bulk PII export is limited to SUPER_ADMIN and HR_TA", () => {
+    expect(can(Role.SUPER_ADMIN, Permission.REGISTRANT_EXPORT)).toBe(true);
+    expect(can(Role.HR_TA, Permission.REGISTRANT_EXPORT)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.REGISTRANT_EXPORT)).toBe(false);
+    expect(can(Role.PARTICIPANT, Permission.REGISTRANT_EXPORT)).toBe(false);
+    // …while the on-screen read stays where it was, so nobody lost the ability to do their job.
+    expect(can(Role.EVENT_ADMIN, Permission.PARTICIPANT_READ)).toBe(true);
+    expect(can(Role.EVENT_ADMIN, Permission.USER_MANAGE)).toBe(true);
   });
 
   it("PARTICIPANT holds no admin permissions and cannot enter admin", () => {

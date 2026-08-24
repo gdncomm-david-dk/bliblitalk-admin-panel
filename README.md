@@ -58,6 +58,7 @@ call. No password is involved, and the whole mechanism is compiled out of produc
 ### Run with Docker
 ```bash
 cp apps/backend/.env.example apps/backend/.env
+cp .env.example .env               # sets the docker-compose Postgres password
 docker-compose up --build
 # App: http://localhost:4000   Postgres: localhost:5432
 ```

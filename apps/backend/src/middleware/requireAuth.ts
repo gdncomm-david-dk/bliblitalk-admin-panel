@@ -33,10 +33,15 @@ export const USER_ID_HEADER = "x-user-id";
  * control — see PROJECT.md "Login Method".
  */
 export const requireAuth: RequestHandler = async (req, _res, next) => {
-  const email = req.headers[USER_ID_HEADER];
-  if (typeof email !== "string" || email.length === 0) {
+  const rawEmail = req.headers[USER_ID_HEADER];
+  if (typeof rawEmail !== "string" || rawEmail.length === 0) {
     return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
   }
+  // Review Finding 16: `createAdminUser` lowercases on write, this lookup did not. An
+  // identity provider that forwards `Firstname.Lastname@blibli.com` therefore missed a row
+  // stored as `firstname.lastname@blibli.com`, and the person saw "no Admin CMS account"
+  // with nothing in the logs to explain why. Normalise on both sides so they cannot drift.
+  const email = rawEmail.trim().toLowerCase();
 
   // Wrapped because Express 4 does not catch a rejected promise from an `async` middleware:
   // it escapes as an unhandled rejection and Node exits. A transient database problem would

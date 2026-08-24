@@ -9,6 +9,25 @@ import {
   SelectionMode,
 } from "./enums";
 
+// SEC-012 (and bliblitalk-user-fe's SEC-003): every URL-bearing field used to be a bare
+// string, so `javascript:` and `data:` values were accepted here, stored, and rendered
+// straight into an anchor's href on the public portal. Validate the scheme where it cannot
+// be bypassed — this package is the one contract both apps consume, since user-fe mirrors
+// it with `pnpm sync:admin`.
+//
+// Two shapes have to stay legal. A site-relative path, because POST /admin/uploads answers
+// with `/api/uploads/...`; and the empty string, because the admin forms submit "" rather
+// than null for a field the editor cleared, and rejecting that would break saving an event.
+// `//evil.example` is deliberately excluded: it starts with a slash but a browser reads it
+// as protocol-relative and leaves the site, so "starts with /" alone is not a safe test.
+const SafeUrl = z
+  .string()
+  .max(2048, "URL is too long")
+  .refine(
+    (v) => v === "" || (v.startsWith("/") && !v.startsWith("//")) || /^https?:\/\//i.test(v),
+    "Must be an http(s) URL or a path beginning with a single /",
+  );
+
 // ---- Auth ----
 // Neither app has a login endpoint any more, so there is no login input to describe:
 // bliblitalk-admin sits behind Apps Gateway and reads the X-User-Id header (2026-08-06),
@@ -21,13 +40,17 @@ import {
 // registration collects the profile and then issues the first OTP. Submitting this
 // creates nothing — the profile comes back in the registration token below and the
 // account is created only once the code is verified.
+// bliblitalk-user-fe's review Finding 11: these are anonymous free-text fields that end up
+// in the admin registrant CSV and on the generated certificate, and none of them had an
+// upper bound — a name is not 100 KB. The caps are generous enough that no real applicant
+// meets them, so they bound abuse without becoming a validation nuisance.
 export const RegisterInput = z.object({
-  fullName: z.string().min(1, "Full name is required"),
-  email: z.string().email(),
-  phone: z.string().min(1, "Phone number is required"),
-  institution: z.string().optional().nullable(),
-  role: z.string().optional().nullable(),
-  yearsOfExperience: z.string().optional().nullable(),
+  fullName: z.string().min(1, "Full name is required").max(120),
+  email: z.string().email().max(254), // RFC 5321 maximum
+  phone: z.string().min(1, "Phone number is required").max(32),
+  institution: z.string().max(160).optional().nullable(),
+  role: z.string().max(120).optional().nullable(),
+  yearsOfExperience: z.string().max(40).optional().nullable(),
 });
 export type RegisterInput = z.infer<typeof RegisterInput>;
 
@@ -67,10 +90,10 @@ export type RegisterResendInput = z.infer<typeof RegisterResendInput>;
 // here). Email is deliberately absent: it is the sign-in identifier, so changing it needs an
 // ownership proof (a code to the new address), not a profile save.
 export const UpdateProfileInput = z.object({
-  fullName: z.string().min(1, "Full name is required"),
-  institution: z.string().optional().nullable(),
-  role: z.string().optional().nullable(),
-  yearsOfExperience: z.string().optional().nullable(),
+  fullName: z.string().min(1, "Full name is required").max(120),
+  institution: z.string().max(160).optional().nullable(),
+  role: z.string().max(120).optional().nullable(),
+  yearsOfExperience: z.string().max(40).optional().nullable(),
 });
 export type UpdateProfileInput = z.infer<typeof UpdateProfileInput>;
 
@@ -109,7 +132,7 @@ export const CreateSpeakerInput = z.object({
   bioShort: z.string().optional().nullable(),
   bioLong: z.string().optional().nullable(),
   credentials: z.array(z.string()).optional().default([]),
-  avatarUrl: z.string().optional().nullable(),
+  avatarUrl: SafeUrl.optional().nullable(),
   featured: z.boolean().optional().default(false),
 });
 export type CreateSpeakerInput = z.infer<typeof CreateSpeakerInput>;
@@ -287,9 +310,12 @@ export const SiteSettingsDTO = z.object({
 export type SiteSettingsDTO = z.infer<typeof SiteSettingsDTO>;
 
 // ---- Login page carousel (admin CMS + participant portal each have their own) ----
+// Doubles as the write contract: adminModuleSettings.routes.ts validates PUT bodies with
+// LoginCarouselSettingsDTO, so SafeUrl on imageUrl tightens the input path. Reads return
+// the stored blob unparsed, so a legacy value cannot be locked out by this.
 export const LoginCarouselSlideDTO = z.object({
-  heading: z.string().min(1),
-  imageUrl: z.string().nullable(),
+  heading: z.string().min(1).max(200),
+  imageUrl: SafeUrl.nullable(),
 });
 export type LoginCarouselSlideDTO = z.infer<typeof LoginCarouselSlideDTO>;
 
@@ -430,10 +456,11 @@ export const FeedbackInput = z.object({
   venueRating: z.number().int().min(1).max(10),
   timingRating: z.number().int().min(1).max(10),
   npsScore: z.number().int().min(0).max(10),
-  takeaway: z.string().optional().nullable(),
-  topicsWanted: z.string().optional().nullable(),
-  speakerWanted: z.string().optional().nullable(),
-  comments: z.string().optional().nullable(),
+  // Same unbounded-free-text problem as RegisterInput: participant-authored, exported to CSV.
+  takeaway: z.string().max(2000).optional().nullable(),
+  topicsWanted: z.string().max(2000).optional().nullable(),
+  speakerWanted: z.string().max(2000).optional().nullable(),
+  comments: z.string().max(2000).optional().nullable(),
 });
 export type FeedbackInput = z.infer<typeof FeedbackInput>;
 
@@ -462,9 +489,9 @@ export const AdminEventInput = z.object({
     .optional(),
   subtitle: z.string().optional().nullable(),
   eventCode: z.string().optional().nullable(),
-  bannerUrl: z.string().optional().nullable(),
-  thumbnailUrl: z.string().optional().nullable(),
-  posterUrl: z.string().optional().nullable(),
+  bannerUrl: SafeUrl.optional().nullable(),
+  thumbnailUrl: SafeUrl.optional().nullable(),
+  posterUrl: SafeUrl.optional().nullable(),
   description: z.string().min(1, "Description is required"),
   categoryId: z.string().min(1, "Category is required"),
   tags: z.array(z.string()).optional().default([]),
@@ -478,7 +505,7 @@ export const AdminEventInput = z.object({
   enableFeedback: z.boolean().optional().default(false),
   waitingListEnabled: z.boolean().optional().default(true),
   venue: z.string().optional().nullable(),
-  mapsUrl: z.string().optional().nullable(),
+  mapsUrl: SafeUrl.optional().nullable(),
   registrationDeadline: z.string().optional().nullable(),
   eventType: z.string().optional().nullable(),
   dressCode: z.string().optional().nullable(),
@@ -486,10 +513,10 @@ export const AdminEventInput = z.object({
   organizedBy: z.string().optional().nullable(),
   importantNotes: z.string().optional().nullable(),
   learningPoints: z.array(LearningPointDTO).optional(),
-  galleryImages: z.array(z.string()).optional(),
+  galleryImages: z.array(SafeUrl).optional(),
   speakerIds: z.array(z.string()).optional(),
-  recordingUrl: z.string().optional().nullable(),
-  presentationUrl: z.string().optional().nullable(),
+  recordingUrl: SafeUrl.optional().nullable(),
+  presentationUrl: SafeUrl.optional().nullable(),
   displayConfig: EventDisplayConfig.partial().optional(),
   selectionMode: z.nativeEnum(SelectionMode).optional(),
   registrationOpensAt: z.string().optional().nullable(),
