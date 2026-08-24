@@ -124,7 +124,7 @@ export function ParticipantsTab({ eventId }: { eventId: string }) {
   useEffect(load, [eventId]);
 
   const companies = useMemo(
-    () => Array.from(new Set((registrations ?? []).map((r) => r.userDepartment).filter(Boolean) as string[])).sort(),
+    () => Array.from(new Set((registrations ?? []).map((r) => r.userDepartment).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
     [registrations],
   );
 
@@ -689,11 +689,12 @@ function ParticipantModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="presentation"
     >
       <div
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-soft"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
           {r.userAvatarUrl ? (

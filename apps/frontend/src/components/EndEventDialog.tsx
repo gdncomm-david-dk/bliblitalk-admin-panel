@@ -32,8 +32,11 @@ export function EndEventDialog({ eventId, onClose, onConfirmed }: EndEventDialog
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="presentation"
+    >
+      <div className="w-full max-w-md rounded-2xl bg-white p-6">
         <h2 className="text-base font-bold text-ink">End Event Now?</h2>
         <p className="mt-1 text-sm text-muted">
           This marks the event as completed immediately, before its scheduled end time.

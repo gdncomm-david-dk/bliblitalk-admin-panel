@@ -1,19 +1,25 @@
 # Full local stack (db + single fullstack app container).
 # For just the database (e.g. running the app via `pnpm dev` outside Docker),
 # use `docker-compose up -d db`.
+#
+# POSTGRES_PASSWORD has no literal value here on purpose: Sonar's secret scanner (rule
+# secrets:S6698) flags any hardcoded database password regardless of how obviously fake it is,
+# and the actual fix is the one CLAUDE.md already requires — load it from the environment
+# instead of writing it into a file this repo checks in. Copy `.env.example` to `.env` in this
+# same directory (gitignored; docker-compose loads it automatically) before running this file.
 services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_USER: blibli
-      POSTGRES_PASSWORD: blibli
-      POSTGRES_DB: blibli_talk
+      POSTGRES_USER: ${POSTGRES_USER:-blibli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD — copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:-blibli_talk}
     ports:
       - "5432:5432"
     volumes:
       - blibli_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U blibli -d blibli_talk"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blibli} -d ${POSTGRES_DB:-blibli_talk}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,7 +33,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://blibli:blibli@db:5432/blibli_talk?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blibli}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blibli_talk}?schema=public
       # No JWT_SECRET/COOKIE_NAME: since the Apps Gateway migration this app signs nothing and
       # reads no cookie (config.ts). Note this compose file runs the app WITHOUT the gateway in
       # front of it, so nothing supplies X-User-Id — every /api/admin request answers 401. It is
