@@ -38,4 +38,4 @@ if (config.isProd) {
   }
 }
 
-app.listen(config.port, "0.0.0.0", () => logger.info(`Blibli Talk Admin API listening on :${config.port}`));
+app.listen(config.port, () => logger.info(`Blibli Talk Admin API listening on :${config.port}`));
