@@ -19,7 +19,7 @@
     "dayjs": "^1.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^6.26.0",
+    "react-router-dom": "^7.18.2",
     "tailwind-merge": "^2.4.0",
     "zustand": "^4.5.0"
   },
