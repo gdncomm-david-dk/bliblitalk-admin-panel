@@ -58,8 +58,31 @@ async function upload<T>(path: string, file: File): Promise<T> {
   return data as T;
 }
 
+/**
+ * SEC-011: fetches a server-generated file. Separate from `request` because that one parses
+ * every response as JSON, and these endpoints return CSV.
+ *
+ * An error response is still JSON, so a failure is surfaced with the same `ApiRequestError`
+ * shape as everything else — a 403 from the export gate reaches the page as a readable message
+ * rather than a corrupt download.
+ */
+async function getText(path: string): Promise<string> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const apiError: ApiError = data?.error ?? { code: "UNKNOWN", message: "Download failed" };
+    throw new ApiRequestError(res.status, apiError);
+  }
+  return res.text();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
+  getText: (path: string) => getText(path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),

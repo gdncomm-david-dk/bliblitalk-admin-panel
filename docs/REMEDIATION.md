@@ -253,13 +253,28 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Status:** OPEN
 - **Note (2026-08-06):** still OPEN, and slightly wider than the original wording suggests. The example role named above no longer exists — `VIEWER` was removed from the `Role` enum by owner decision — so read it as any admin lacking the permission a route needs. Concretely today: `HR_TA` can reach `/events/new` and `/roles` by typing the URL even though it holds neither `EVENT_CREATE` nor `ROLE_MANAGE`. The server-side verification above is unchanged and still correct, so this remains client-side-only and advisory.
 
-### SEC-011 — PII exposed unmasked in list views + ungated client-side CSV export  [OPEN]
+### SEC-011 — PII exposed unmasked in list views + ungated client-side CSV export  [FIXED (2026-08-14 — export half; masking declined by owner)]
 - **Source:** `code-review/audit-security` (frontend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/frontend/src/pages/registrants/RegistrantsPage.tsx:15-44,77-86,157-183`; `apps/frontend/src/pages/events/workspace/ParticipantsTab.tsx:17-54,340-346`
 - **Why advisory:** Full unmasked email/phone/department/position/YoE in list views, with a client-side CSV export requiring no privilege beyond page-browse and producing no audit trail.
 - **Suggested fix:** If bulk export must stay self-service, add a distinct export permission and have the backend audit-log the export (actor, row count, timestamp).
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14 — export half; masking declined by owner)
+- **Note (2026-08-14):** The finding has two halves and they were answered differently, on the owner's decision of 2026-08-14.
+
+  **Export — fixed, exactly as suggested.** Both CSVs were built in the browser, which is what made them ungateable and unrecordable; a client-side check would have been cosmetic (that is SEC-010). They now come from the API:
+  - `GET /admin/users/export?search=` → `exportRegistrants` + `registrantCsv` (`adminUsers.service.ts`)
+  - `GET /admin/events/:id/registrations/export` → `participantCsv` (`adminParticipants.service.ts`)
+
+  Both gate on a **new** permission `Permission.REGISTRANT_EXPORT` (`registrant:export`), held by **SUPER_ADMIN and HR_TA only**. `EVENT_ADMIN` deliberately loses bulk export while keeping `PARTICIPANT_READ`/`USER_MANAGE` — it still works its own events' participant list on screen, it just cannot take a copy away. The per-event route additionally keeps `requireEventAccess`, so the new permission is not a way around event scoping.
+
+  Each export writes an audit row to the new `AuditLog` table (migration `20260814090000_audit_log`) — actor id/email/role, row count, target, and for the registrant export the search filter used and whether the 10 000-row cap truncated it. `AuditLog` has no FK to `User` (an audit row a cascade can delete is not an audit row) and needs no grant for `bliblitalk_public`, because SEC-031 removed the blanket default-SELECT.
+
+  Two side effects worth recording: the registrant export now covers **every** matching row rather than the page on screen (the old client version silently exported one page), and the per-event export now covers every participant on the event rather than the client-side filtered view — those filters are UI-only and duplicating them server-side would mean two copies of the same predicate drifting apart. The button says "Export All" and carries a tooltip.
+
+  Covered by 7 tests: `rbac.test.ts` (the permission split), `adminUsers.routes.test.ts` (auth, event-admin refused while its list still loads, CSV + audit row, search applied and recorded), `adminParticipants.routes.test.ts` (auth, event-admin refused *while assigned to the event*, CSV + audit row, event scope still enforced). Proved non-vacuous: swapping the gate to `USER_MANAGE` fails both refusal tests with `expected 200 to be 403`.
+
+  **Masking — declined, by owner decision (2026-08-14).** The list views keep showing full email/phone/department/position/YoE. The reasoning recorded by the owner: this is the internal recruitment CMS behind the Apps Gateway, the audience is Talent Acquisition and event staff, and contacting these people *is* the job — masked columns would be un-masked on every row, adding friction without removing the data. Gating the copy that leaves the system is the control that matters. This is a product decision, not an InfoSec waiver; if InfoSec disagrees, the masking half reopens on its own.
 
 ### SEC-012 — URL-typed content fields lack `.url()` validation  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (frontend/shared), should-fix
@@ -286,13 +301,20 @@ Last audited: 2026-08-11 — Information Security review (external, human-led) a
 - **Suggested fix:** Have the Express backend or reverse proxy set a CSP response header for the SPA shell.
 - **Status:** FIXED (2026-08-13) — **subsumed by SEC-032 (2026-08-12)**, which covered the whole missing header set (nosniff, frame-ancestors, Referrer-Policy, `x-powered-by`) at BLOCKING tier and was fixed on 2026-08-13; the CSP this finding asked for is a response header from Express, not a `<meta>` tag in `index.html`. Kept for history per this backlog's no-delete rule.
 
-### SEC-015 — Outbound marketing/reminder HTML email content is not sanitized before send  [OPEN]
+### SEC-015 — Outbound marketing/reminder HTML email content is not sanitized before send  [FIXED (2026-08-14)]
 - **Source:** `code-review/audit-security` (frontend + backend), should-fix
 - **Tier rule matched:** `should-fix` → ADVISORY
 - **Location:** `apps/frontend/src/pages/marketing/MarketingEmailPage.tsx:222-229`, `apps/frontend/src/pages/events/workspace/RemindersTab.tsx:143-149,167-173`, `apps/backend/src/lib/shared/mailer.ts` (confirmed: no sanitizer/escaping call anywhere in the mailer)
 - **Why advisory:** Content is admin-authored (not attacker-controlled untrusted input), so this is a stored-content/accidental-markup risk for real participant recipients rather than an active XSS path — but confirmed genuinely unsanitized end-to-end.
 - **Suggested fix:** Sanitize/allow-list outbound HTML server-side before send (e.g. `sanitize-html` with a restrictive tag/attribute allowlist) in `mailer.ts` or at the point campaigns/reminders are composed.
-- **Status:** OPEN
+- **Status:** FIXED (2026-08-14)
+- **Note (2026-08-14):** Fixed with `sanitize-html@2.17.7` (MIT, apostrophecms — name and publisher verified on the registry before install, pinned exact, lockfile committed) behind a new `apps/backend/src/lib/shared/emailHtml.ts` → `sanitizeEmailHtml()`.
+
+  Sanitising in `mailer.ts` rather than at each compose site was deliberate: it is the one place every outbound message passes through, so a future sender cannot forget. To make that structural rather than a convention, the actual send moved into a **private** `deliver(to, subject, safeHtml)`; the only exported paths are `sendEmail` and `sendBulkEmail`, both of which sanitise first. `sendBulkEmail` sanitises **once** for the whole batch instead of per recipient — re-parsing the same campaign body for thousands of addresses is pure waste.
+
+  The allowlist looks dated on purpose and the file says why: HTML email has no flexbox and no external stylesheets, so layout tables, `<center>`, `<font>` and inline `style` are how real campaigns are built. What it removes is the part that can reach a recipient's mail client: `<script>`/`<style>`/`<iframe>`/`<object>`/`<form>` (with `nonTextTags` so the *body* of a script tag goes too, not just its tags), every `on*` handler, `javascript:` and `data:` URLs, protocol-relative `//evil.example` (`allowProtocolRelative: false`), and any CSS property outside a bounded allowlist. `cid:` is permitted on `<img>` only, for inline attachments.
+
+  Covered by 19 tests: 15 in `emailHtml.test.ts` split into "strips what must never reach a recipient" and "keeps what a real campaign is made of" (ordinary formatting passes through byte-identical; the sanitizer is idempotent), plus 4 in `mailer.test.ts` proving the sanitizer is *wired in* rather than merely present — these assert on what `nodemailer.sendMail` actually received, including every recipient of a bulk send, not just the first. Proved non-vacuous: reverting `mailer.ts` to send raw HTML fails 3 of the 4 with the exact expected messages.
 
 ### SEC-016 — No idle/inactivity timeout on sessions  [FIXED (2026-08-06 — moot, this app holds no session)]
 - **Source:** `code-review/audit-security` (backend), should-fix

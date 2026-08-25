@@ -1,6 +1,7 @@
 import type { Feedback, Registration, User } from "@prisma/client";
 import { Attendance, RegistrationStatus } from "@repo/shared-types";
 import type { AdminRegistrationDTO } from "@repo/shared-types";
+import { toCsv } from "@repo/shared-utils";
 import { prisma } from "../../db/client";
 import { AppError } from "../../middleware/error";
 
@@ -136,4 +137,41 @@ export function checkInRegistration(id: string) {
 
 export function markAbsentRegistration(id: string) {
   return setAttendance(id, Attendance.ABSENT);
+}
+
+/**
+ * SEC-011: the per-event participant CSV, moved out of the browser alongside the registrant
+ * export. Columns and formatting are unchanged from the client-side version it replaces.
+ *
+ * `toCsv` quotes every field and neutralises spreadsheet formulas (SEC-026) — which matters
+ * more here than for the registrant list, because these names and job titles come straight
+ * from the public portal's unauthenticated registration form.
+ */
+export function participantCsv(rows: AdminRegistrationDTO[]): string {
+  return toCsv(
+    [
+      "Name",
+      "Email",
+      "Company",
+      "Job Title",
+      "YoE",
+      "Status",
+      "Attendance",
+      "Feedback",
+      "Registered",
+      "Certificate",
+    ],
+    rows.map((r) => [
+      r.userName,
+      r.userEmail,
+      r.userDepartment ?? "",
+      r.userPosition ?? "",
+      r.userYearsOfExperience ?? "",
+      r.status,
+      r.attendance,
+      r.feedbackSubmitted ? "Yes" : "No",
+      r.createdAt.slice(0, 10),
+      r.certificateCode ?? "",
+    ]),
+  );
 }
