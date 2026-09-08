@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "dayjs": "^1.11.0"
+    "dayjs": "^1.11.23"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
