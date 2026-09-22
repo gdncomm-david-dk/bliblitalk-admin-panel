@@ -17,8 +17,8 @@
     "db:bootstrap-superadmin": "pnpm --filter @repo/backend bootstrap:superadmin"
   },
   "devDependencies": {
-    "prettier": "^3.3.0",
-    "turbo": "^2.1.0",
+    "prettier": "^3.9.8",
+    "turbo": "^2.11.2",
     "typescript": "^5.5.0"
   },
   "pnpm": {
